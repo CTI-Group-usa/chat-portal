@@ -18,10 +18,10 @@
     box-shadow: 0 4px 24px rgba(0,0,0,.10);
   }
   .logo {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 12px;
     margin-bottom: 28px;
   }
-  .logo svg { width: 36px; height: 36px; }
+  .logo img { height: 52px; }
   .logo span { font-size: 18px; font-weight: 700; color: #111827; }
   label { display: block; font-size: 13px; font-weight: 600;
           color: #374151; margin-bottom: 6px; }
@@ -30,14 +30,14 @@
     border-radius: 8px; font-size: 14px; outline: none;
     transition: border-color .2s;
   }
-  input:focus { border-color: #2563eb; }
+  input:focus { border-color: #c1272d; }
   .field { margin-bottom: 18px; }
   button {
-    width: 100%; padding: 11px; background: #2563eb; color: #fff;
+    width: 100%; padding: 11px; background: #c1272d; color: #fff;
     border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
     cursor: pointer; transition: background .2s;
   }
-  button:hover { background: #1d4ed8; }
+  button:hover { background: #8a1c21; }
   button:disabled { background: #9ca3af; cursor: not-allowed; }
   .error {
     background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
@@ -50,11 +50,8 @@
 <body>
 <div class="card">
   <div class="logo">
-    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="32" height="32" rx="8" fill="#2563eb"/>
-      <path d="M9 11a2 2 0 012-2h10a2 2 0 012 2v7a2 2 0 01-2 2h-6.5L11 23v-3H11a2 2 0 01-2-2v-7z" fill="white"/>
-    </svg>
-    <span>CTI Chat Portal</span>
+    <img src="assets/cti-logo.png" alt="CTI Group">
+    <span>Chat Portal</span>
   </div>
 
   <div class="error" id="error-box"></div>

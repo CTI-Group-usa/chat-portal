@@ -8,8 +8,8 @@
 /* ── Reset & Base ──────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --wa-green:   #2563eb;
-  --wa-dark:    #1d4ed8;
+  --wa-green:   #c1272d;
+  --wa-dark:    #8a1c21;
   --sidebar-w:  300px;
   --header-h:   56px;
   --gray-50:    #f9fafb;
@@ -37,7 +37,8 @@ header {
 }
 .header-left { display: flex; align-items: center; gap: 10px; }
 .header-logo { color: #fff; font-size: 17px; font-weight: 700; letter-spacing: -.3px; }
-.header-logo span { color: var(--wa-green); }
+.header-logo span { color: #fff; opacity: .85; font-weight: 500; }
+.header-logo-img { height: 30px; border-radius: 5px; background: #fff; padding: 2px 5px; display: block; }
 .ws-badge {
   font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 600;
   background: #dc2626; color: #fff; transition: background .3s;
@@ -146,7 +147,7 @@ header {
   transition: background .15s; position: relative;
 }
 .conv-item:hover { background: var(--gray-50); }
-.conv-item.active { background: #eaf1fd; border-right: 3px solid var(--wa-green); }
+.conv-item.active { background: #fbe9ea; border-right: 3px solid var(--wa-green); }
 .conv-avatar {
   width: 42px; height: 42px; border-radius: 50%; background: var(--wa-green);
   display: flex; align-items: center; justify-content: center;
@@ -204,7 +205,7 @@ header {
   padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
   border: 1.5px solid; cursor: pointer; transition: all .15s; white-space: nowrap;
 }
-.btn-claim   { border-color: var(--wa-green); color: var(--wa-dark);   background: #eaf1fd; }
+.btn-claim   { border-color: var(--wa-green); color: var(--wa-dark);   background: #fbe9ea; }
 .btn-claim:hover { background: var(--wa-green); color: #fff; }
 .btn-release { border-color: var(--gray-400);  color: var(--gray-600); background: #fff; }
 .btn-release:hover { background: var(--gray-200); }
@@ -228,7 +229,7 @@ header {
   background: #fff; border-top-left-radius: 0;
 }
 .msg-row.agent .msg-bubble {
-  background: #dbeafe; border-top-right-radius: 0;
+  background: #f8d7d9; border-top-right-radius: 0;
 }
 .msg-row.agent .msg-bubble.ai-bubble {
   background: #eef2ff; border: 1px dashed #a5b4fc;
@@ -301,7 +302,7 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
   color: var(--gray-600); cursor: pointer; transition: all .15s;
 }
 .tpl-chip:hover, .tpl-chip.active {
-  border-color: var(--wa-green); background: #eaf1fd; color: var(--wa-dark);
+  border-color: var(--wa-green); background: #fbe9ea; color: var(--wa-dark);
 }
 .tpl-preview {
   background: #fff; border: 1.5px solid var(--gray-200); border-radius: 10px;
@@ -360,7 +361,8 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
 <!-- ── Header ─────────────────────────────────────────────────── -->
 <header>
   <div class="header-left">
-    <div class="header-logo">CTI <span>Chat Portal</span></div>
+    <img class="header-logo-img" src="assets/cti-logo.png" alt="CTI Group">
+    <div class="header-logo">Chat <span>Portal</span></div>
     <span class="ws-badge" id="ws-badge">● Connecting</span>
   </div>
   <div class="header-right">
