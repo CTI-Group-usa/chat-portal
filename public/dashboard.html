@@ -241,6 +241,9 @@ body {
 .msg-row.agent .msg-bubble.ai-bubble {
   background: #eef2ff; border: 1px dashed #a5b4fc;
 }
+.msg-row.agent .msg-bubble.note-bubble {
+  background: #fef3c7; border: 1px dashed #f59e0b;
+}
 .msg-row.system .msg-bubble {
   background: rgba(255,255,255,.7); font-size: 12px;
   color: var(--gray-600); border-radius: 8px; padding: 4px 10px;
@@ -274,6 +277,17 @@ body {
   background: #f0f0f0; border-top: 1px solid var(--gray-200);
   padding: 10px 16px; flex-shrink: 0;
 }
+.composer-toolbar { display: flex; gap: 6px; margin-bottom: 10px; align-items: center; }
+.mode-btn {
+  padding: 4px 10px; border-radius: 6px; border: 1.5px solid var(--gray-200);
+  background: #fff; font-size: 11px; font-weight: 600; color: var(--gray-600); cursor: pointer;
+}
+.mode-btn.active { background: var(--wa-green); border-color: var(--wa-green); color: #fff; }
+.btn-ai-assist {
+  margin-left: auto; padding: 4px 10px; border-radius: 6px; border: 1.5px dashed #a5b4fc;
+  background: #eef2ff; font-size: 11px; font-weight: 600; color: #6366f1; cursor: pointer;
+}
+.btn-ai-assist:disabled { opacity: .6; cursor: not-allowed; }
 .window-warning {
   background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
   padding: 8px 12px; font-size: 12px; color: #92400e; margin-bottom: 10px;
@@ -624,6 +638,9 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
         <button class="queue-tab" data-q="mine">
           <span class="tab-count" id="cnt-mine">0</span>Mine
         </button>
+        <button class="queue-tab" data-q="snoozed">
+          <span class="tab-count" id="cnt-snoozed">0</span>😴
+        </button>
       </div>
     </div>
     <div class="search-box">
@@ -637,6 +654,10 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
       <option value="j1">J1 Program</option>
       <option value="general">General</option>
     </select>
+    <label style="display:flex; align-items:center; gap:6px; margin:8px 14px 0; font-size:12px; color:var(--gray-600); cursor:pointer;">
+      <input type="checkbox" id="unreplied-toggle" onchange="renderConvList()">
+      Unreplied only
+    </label>
     <div class="conv-list" id="conv-list">
       <div class="empty-state"><div class="icon">💬</div><span>No conversations yet</span></div>
     </div>
@@ -660,6 +681,13 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
         <div class="chat-actions">
           <button class="btn-sm btn-claim"   id="btn-claim"   onclick="claimConv()">Claim</button>
           <button class="btn-sm btn-release" id="btn-release" onclick="releaseConv()">Release</button>
+          <select class="btn-sm" id="btn-snooze" onchange="snoozeFromSelect(this)" style="border-color:var(--gray-400); color:var(--gray-600); background:#fff;">
+            <option value="">😴 Snooze…</option>
+            <option value="1h">1 hour</option>
+            <option value="tomorrow9">Tomorrow 9am</option>
+            <option value="monday9">Next Monday 9am</option>
+            <option value="unsnooze">Un-snooze</option>
+          </select>
           <button class="btn-sm btn-resolve" id="btn-resolve" onclick="resolveConv()">Resolve</button>
         </div>
       </div>
@@ -669,6 +697,12 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
 
       <!-- Input Area -->
       <div class="input-area" id="input-area">
+        <div class="composer-toolbar">
+          <button type="button" class="mode-btn active" id="mode-btn-message" onclick="setComposerMode('message')">💬 Message</button>
+          <button type="button" class="mode-btn" id="mode-btn-note" onclick="setComposerMode('note')">📝 Note</button>
+          <button type="button" class="btn-ai-assist" id="btn-ai-assist" onclick="runAiAssist()">✨ AI Assist</button>
+        </div>
+
         <!-- 24h window warning (shown when outside window) -->
         <div class="window-warning" id="window-warning" style="display:none">
           <svg width="16" height="16" viewBox="0 0 20 20" fill="#d97706"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
@@ -683,6 +717,14 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
               <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </div>
+        </div>
+
+        <!-- Internal note (always available, independent of the 24h window) -->
+        <div id="note-area" style="display:none;">
+          <textarea id="note-input" rows="2"
+            placeholder="Write an internal note — not sent to the candidate. Tip: type @FirstName to notify a teammate."
+            style="width:100%; padding:10px 14px; border:1.5px solid #f59e0b; border-radius:10px; font-size:14px; background:#fef3c7; resize:none; outline:none;"></textarea>
+          <button class="btn-primary-full" style="margin-top:8px; background:#d97706;" onclick="sendNote()">Add Internal Note</button>
         </div>
 
         <!-- Template picker (outside window) -->
@@ -1316,12 +1358,26 @@ function handleWSEvent(evt) {
       if (evt.message.conversation_id === STATE.activeConvId) {
         appendMessage(evt.message);
         scrollThread();
-        // Mark as read & reset badge
+        // Mark as read & reset badge, and refresh the header (department/assignment/snooze may have changed)
         const ac = STATE.convMap.get(STATE.activeConvId);
-        if (ac) { ac.unread_count = 0; renderConvList(); }
+        if (ac) { ac.unread_count = 0; updateChatHeader(ac); renderConvList(); }
       } else if (evt.message.sender_type === 'candidate') {
         const name = conv?.candidate_name ?? 'Someone';
         toast(`💬 New message from ${name}`, 'info');
+      }
+      if (evt.mentions?.includes(STATE.agent.id)) {
+        const name = conv?.candidate_name ?? conv?.candidate_phone ?? 'a conversation';
+        toast(`🔔 ${evt.mentioned_by} mentioned you in ${name}`, 'info');
+      }
+      break;
+    }
+
+    case 'conversation_snoozed': {
+      const c = STATE.convMap.get(evt.conversation_id);
+      if (c) {
+        c.snoozed_until = evt.snoozed_until;
+        renderConvList();
+        if (evt.conversation_id === STATE.activeConvId) updateChatHeader(c);
       }
       break;
     }
@@ -1374,18 +1430,21 @@ function handleWSEvent(evt) {
 async function loadConversations() {
   try {
     const deptQS = STATE.deptFilter ? `&department=${encodeURIComponent(STATE.deptFilter)}` : '';
-    const [all, unassigned, mine] = await Promise.all([
+    const [all, unassigned, mine, snoozed] = await Promise.all([
       api(`/conversations?queue=all&limit=100${deptQS}`),
       api(`/conversations?queue=unassigned&limit=100${deptQS}`),
       api(`/conversations?queue=mine&limit=100${deptQS}`),
+      api(`/conversations?queue=snoozed&limit=100${deptQS}`),
     ]);
 
     STATE.convMap.clear();
     all.conversations.forEach(c => STATE.convMap.set(c.id, c));
+    snoozed.conversations.forEach(c => STATE.convMap.set(c.id, c));
 
     document.getElementById('cnt-all').textContent        = all.conversations.length;
     document.getElementById('cnt-unassigned').textContent = unassigned.conversations.length;
     document.getElementById('cnt-mine').textContent       = mine.conversations.length;
+    document.getElementById('cnt-snoozed').textContent    = snoozed.conversations.length;
 
     renderConvList();
   } catch (e) {
@@ -1396,11 +1455,21 @@ async function loadConversations() {
 function renderConvList() {
   const q      = STATE.queue;
   const search = document.getElementById('search-input').value.toLowerCase();
+  const unrepliedOnly = document.getElementById('unreplied-toggle')?.checked;
 
   let items = [...STATE.convMap.values()].filter(c => {
     if (c.status !== 'open') return false;
-    if (q === 'unassigned' && c.assigned_agent_id)              return false;
-    if (q === 'mine'       && c.assigned_agent_id !== STATE.agent.id) return false;
+
+    const isSnoozed = c.snoozed_until && new Date(c.snoozed_until) > new Date();
+    if (q === 'snoozed') {
+      if (!isSnoozed) return false;
+    } else {
+      if (isSnoozed) return false;
+      if (q === 'unassigned' && c.assigned_agent_id)              return false;
+      if (q === 'mine'       && c.assigned_agent_id !== STATE.agent.id) return false;
+    }
+
+    if (unrepliedOnly && c.last_customer_facing_sender !== 'candidate') return false;
     if (search && !c.candidate_name?.toLowerCase().includes(search)
                && !c.candidate_phone?.includes(search))         return false;
     return true;
@@ -1427,7 +1496,7 @@ function renderConvList() {
       <div class="conv-item ${isActive ? 'active' : ''}" onclick="openConv('${c.id}')">
         <div class="conv-avatar">${initials}</div>
         <div class="conv-info">
-          <div class="conv-name">${escHtml(c.candidate_name ?? c.candidate_phone)}</div>
+          <div class="conv-name">${c.snoozed_until && new Date(c.snoozed_until) > new Date() ? '😴 ' : ''}${escHtml(c.candidate_name ?? c.candidate_phone)}</div>
           <div class="conv-preview">${preview}</div>
         </div>
         <div class="conv-meta">
@@ -1445,6 +1514,7 @@ function renderConvList() {
 // ─────────────────────────────────────────────────────────────────
 async function openConv(id) {
   STATE.activeConvId = id;
+  setComposerMode('message');
   renderConvList();
 
   const conv = STATE.convMap.get(id);
@@ -1480,15 +1550,48 @@ function updateChatHeader(conv) {
   document.getElementById('ch-name').textContent =
     conv.candidate_name ?? conv.candidate_phone;
   const deptPrefix = conv.department ? `[${conv.department.toUpperCase()}] ` : '';
+  const isSnoozed  = conv.snoozed_until && new Date(conv.snoozed_until) > new Date();
+  const snoozeNote = isSnoozed ? ` · 😴 Snoozed until ${new Date(conv.snoozed_until).toLocaleString()}` : '';
   document.getElementById('ch-sub').textContent = deptPrefix +
     (conv.assigned_agent_id
       ? `Assigned to ${conv.agent_name ?? conv.assigned_agent_id}`
-      : '⚠ Unassigned — available to claim');
+      : '⚠ Unassigned — available to claim') + snoozeNote;
 
   const isMine = conv.assigned_agent_id === STATE.agent.id;
   document.getElementById('btn-claim').style.display   = (!conv.assigned_agent_id) ? '' : 'none';
   document.getElementById('btn-release').style.display = isMine ? '' : 'none';
   document.getElementById('btn-resolve').style.display = isMine ? '' : 'none';
+  document.getElementById('btn-snooze').style.display  = (isMine || STATE.agent.role === 'admin') ? '' : 'none';
+  document.getElementById('btn-snooze').value = '';
+}
+
+async function snoozeFromSelect(selectEl) {
+  const choice = selectEl.value;
+  selectEl.value = '';
+  if (!choice || !STATE.activeConvId) return;
+
+  let until = null;
+  if (choice !== 'unsnooze') {
+    const d = new Date();
+    if (choice === '1h') {
+      d.setHours(d.getHours() + 1);
+    } else if (choice === 'tomorrow9') {
+      d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+    } else if (choice === 'monday9') {
+      d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0);
+    }
+    until = d.toISOString();
+  }
+
+  try {
+    await api(`/conversations/${STATE.activeConvId}/snooze`, { method: 'POST', body: { until } });
+    const c = STATE.convMap.get(STATE.activeConvId);
+    if (c) { c.snoozed_until = until; updateChatHeader(c); }
+    renderConvList();
+    toast(until ? 'Conversation snoozed 😴' : 'Un-snoozed ✓', 'success');
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -1523,8 +1626,9 @@ function messageBubble(m) {
   const tick = m.sender_type === 'agent' ? `<span class="msg-ticks ${m.status}">${statusTick(m.status)}</span>` : '';
   const tplBadge = m.template_name ? `<div class="msg-template-badge">📋 ${m.template_name}</div>` : '';
   const isAi = m.is_ai_generated === 1 || m.is_ai_generated === true;
+  const isNote = m.is_internal === 1 || m.is_internal === true;
   const agentLabel = m.sender_type === 'agent'
-    ? `<div class="msg-agent-name">${isAi ? '🤖 CTI Assistant (auto-reply)' : escHtml(m.agent_name ?? 'Agent')}</div>` : '';
+    ? `<div class="msg-agent-name">${isAi ? '🤖 CTI Assistant (auto-reply)' : escHtml(m.agent_name ?? 'Agent')}${isNote ? ' · 🔒 Internal note' : ''}</div>` : '';
 
   if (m.sender_type === 'system') {
     return `<div class="msg-row system"><div class="msg-bubble">${escHtml(m.body_text ?? '')}</div></div>`;
@@ -1532,7 +1636,7 @@ function messageBubble(m) {
 
   return `
     <div class="msg-row ${m.sender_type}" data-meta="${m.meta_message_id ?? ''}">
-      <div class="msg-bubble ${isAi ? 'ai-bubble' : ''}">
+      <div class="msg-bubble ${isAi ? 'ai-bubble' : ''} ${isNote ? 'note-bubble' : ''}">
         ${agentLabel}
         ${tplBadge}
         ${escHtml(m.body_text ?? `[${m.media_type ?? 'media'}]`)}
@@ -1585,6 +1689,64 @@ document.getElementById('msg-input').addEventListener('input', function() {
   this.style.height = 'auto';
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 });
+
+// ─────────────────────────────────────────────────────────────────
+//  Composer mode — normal message vs. internal note
+// ─────────────────────────────────────────────────────────────────
+function setComposerMode(mode) {
+  STATE.composerMode = mode;
+  document.getElementById('mode-btn-message').classList.toggle('active', mode === 'message');
+  document.getElementById('mode-btn-note').classList.toggle('active', mode === 'note');
+  document.getElementById('btn-ai-assist').style.display = mode === 'note' ? 'none' : '';
+
+  if (mode === 'note') {
+    document.getElementById('note-area').style.display = '';
+    document.getElementById('window-warning').style.display = 'none';
+    document.getElementById('free-text-area').style.display = 'none';
+    document.getElementById('template-section').classList.remove('visible');
+  } else {
+    document.getElementById('note-area').style.display = 'none';
+    applyWindowUI(STATE.windowOpen);
+  }
+}
+
+async function sendNote() {
+  const input = document.getElementById('note-input');
+  const text  = input.value.trim();
+  if (!text || !STATE.activeConvId) return;
+
+  try {
+    await api('/messages/note', { method: 'POST', body: { conversation_id: STATE.activeConvId, body_text: text } });
+    input.value = '';
+  } catch (e) {
+    toast('Failed to add note: ' + e.message, 'error');
+  }
+}
+
+async function runAiAssist() {
+  if (!STATE.activeConvId) return;
+  const btn = document.getElementById('btn-ai-assist');
+  btn.disabled = true;
+  btn.textContent = '✨ Drafting…';
+
+  try {
+    const { draft } = await api(`/messages/${STATE.activeConvId}/ai-draft`, { method: 'POST' });
+    if (draft) {
+      const input = document.getElementById('msg-input');
+      input.value = draft;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      input.focus();
+    } else {
+      toast('AI Assist had nothing to suggest', 'error');
+    }
+  } catch (e) {
+    toast('AI Assist failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ AI Assist';
+  }
+}
 
 async function sendFreeText() {
   const input = document.getElementById('msg-input');

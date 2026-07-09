@@ -84,10 +84,15 @@ async function handleIncomingMessage(value, env) {
             `UPDATE conversations
              SET candidate_name = COALESCE(?, candidate_name),
                  last_candidate_message_at = ?,
-                 updated_at = ?
+                 updated_at = ?,
+                 snoozed_until = NULL
              WHERE candidate_phone = ?`
         ).bind(name, ts, ts, phone).run();
-        conv = { ...existingConv, last_candidate_message_at: ts, updated_at: ts };
+        conv = { ...existingConv, last_candidate_message_at: ts, updated_at: ts, snoozed_until: null };
+
+        if (existingConv.snoozed_until) {
+            await logSystemEvent(env, conv.id, 'Un-snoozed automatically — candidate replied');
+        }
     } else {
         const convId = uuid();
         await env.DB.prepare(
@@ -125,6 +130,9 @@ async function handleIncomingMessage(value, env) {
 
         conv.department = department;
         conv.intent_confidence = confidence;
+
+        const pct = Math.round(confidence * 100);
+        await logSystemEvent(env, conv.id, `AI routed this conversation to ${department} (${pct}% confidence)`);
     }
 
     // ── Broadcast to all agent dashboards via Durable Object ─────
@@ -179,6 +187,25 @@ async function handleStatusUpdate(value, env) {
     });
 }
 
+// Persists a system-narrated event ("assigned to X", "AI routed to Y") into the
+// thread itself (not just a live WS ping) so it's still visible after a reload.
+async function logSystemEvent(env, conversationId, text) {
+    const id = uuid();
+    const ts = now();
+
+    await env.DB.prepare(
+        `INSERT INTO messages (id, conversation_id, sender_type, body_text, status, created_at)
+         VALUES (?, ?, 'system', ?, 'sent', ?)`
+    ).bind(id, conversationId, text, ts).run();
+
+    await broadcastToRoom(env, {
+        type: 'new_message',
+        message: { id, conversation_id: conversationId, sender_type: 'system', body_text: text, status: 'sent', created_at: ts },
+    });
+
+    return { id, created_at: ts };
+}
+
 // Calls the Durable Object's /broadcast endpoint
 async function broadcastToRoom(env, payload) {
     const id  = env.INBOX_ROOM.idFromName('global-inbox-room');
@@ -190,4 +217,4 @@ async function broadcastToRoom(env, payload) {
     });
 }
 
-export { webhook, broadcastToRoom };
+export { webhook, broadcastToRoom, logSystemEvent };

@@ -81,6 +81,36 @@ export async function draftAfterHoursReply(env, text, department, hoursText) {
     }
 }
 
+// Drafts a SUGGESTED reply for an agent to review/edit before sending —
+// never sent automatically, unlike draftAfterHoursReply. Free to be more
+// substantive since a human is the checkpoint before anything reaches the
+// candidate, but still told to placeholder facts it doesn't actually know
+// rather than invent dates/amounts/requirements.
+export async function draftAgentReplySuggestion(env, history, department) {
+    if (!env.GROQ_API_KEY) return '';
+    const label = DEPT_LABELS[department] ?? DEPT_LABELS.general;
+
+    const chatMessages = [
+        { role: 'system', content:
+            `You are drafting a suggested WhatsApp reply for a CTI Group Worldwide Services recruiter on the ${label} team. ` +
+            `This is only a DRAFT for the recruiter to review and edit — it is never sent automatically. Based on the ` +
+            `conversation so far, write a helpful, warm, professional reply (2-4 sentences). If a specific fact is needed ` +
+            `that you don't actually know (a date, amount, document requirement), use a bracketed placeholder like [DATE] ` +
+            `instead of inventing one.` },
+        ...history.map(m => ({
+            role: m.sender_type === 'candidate' ? 'user' : 'assistant',
+            content: m.body_text || '(non-text message)',
+        })),
+    ];
+
+    try {
+        return (await groqChat(env, chatMessages)).trim();
+    } catch (e) {
+        console.error('[AI] draftAgentReplySuggestion failed:', e.message);
+        return '';
+    }
+}
+
 function fallbackReply(label, hoursText) {
     return `Thanks for reaching out to CTI Group! We've received your message and routed it to our ${label} team. ` +
            `Someone will follow up during business hours (${hoursText}).`;

@@ -3,6 +3,7 @@ import { requireAuth }                  from '../lib/auth.js';
 import { json, err, uuid, now,
          hoursSince, compileTemplate }  from '../lib/utils.js';
 import { MetaClient, buildTemplateComponents } from '../lib/meta.js';
+import { draftAgentReplySuggestion }    from '../lib/ai.js';
 import { broadcastToRoom }              from './webhook.js';
 
 const messages = new Hono();
@@ -155,6 +156,73 @@ messages.get('/window/:conversation_id', async (c) => {
         remaining_hours:         +remainingHours,
         last_candidate_message:  conv.last_candidate_message_at,
     });
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  POST /api/messages/note
+//  Internal, agent-only note — never sent to the candidate. Any active
+//  teammate mentioned as "@FirstName" gets flagged in the broadcast so
+//  the frontend can toast them.
+//  Body: { conversation_id, body_text }
+// ─────────────────────────────────────────────────────────────────
+messages.post('/note', async (c) => {
+    const agent = c.get('agent');
+    const { conversation_id, body_text } = await c.req.json();
+    if (!conversation_id || !body_text?.trim()) return err('conversation_id and body_text are required');
+
+    const conv = await c.env.DB.prepare('SELECT id FROM conversations WHERE id = ?').bind(conversation_id).first();
+    if (!conv) return err('Conversation not found', 404);
+
+    const msgId = uuid();
+    const ts    = now();
+
+    await c.env.DB.prepare(
+        `INSERT INTO messages (id, conversation_id, sender_type, agent_id, body_text, status, is_internal, created_at)
+         VALUES (?, ?, 'agent', ?, ?, 'sent', 1, ?)`
+    ).bind(msgId, conversation_id, agent.id, body_text.trim(), ts).run();
+
+    await c.env.DB.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').bind(ts, conversation_id).run();
+
+    // @mention detection — match "@FirstName" against active teammates' first names.
+    const { results: teammates } = await c.env.DB.prepare(
+        'SELECT id, name FROM agents WHERE is_active = 1 AND id != ?'
+    ).bind(agent.id).all();
+    const lowerText = body_text.toLowerCase();
+    const mentioned = teammates
+        .filter(a => lowerText.includes('@' + a.name.split(' ')[0].toLowerCase()))
+        .map(a => a.id);
+
+    const savedMsg = {
+        id: msgId, conversation_id, sender_type: 'agent', agent_id: agent.id, agent_name: agent.name,
+        body_text: body_text.trim(), status: 'sent', is_internal: 1, created_at: ts,
+    };
+
+    await broadcastToRoom(c.env, { type: 'new_message', message: savedMsg, mentions: mentioned, mentioned_by: agent.name });
+
+    return json({ message: savedMsg }, 201);
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  POST /api/messages/:conversation_id/ai-draft
+//  Returns a SUGGESTED reply for the agent to review/edit — never sent
+//  automatically. Built from the last 10 customer-facing messages
+//  (internal notes excluded so the model isn't confused about what was
+//  actually said to the candidate).
+// ─────────────────────────────────────────────────────────────────
+messages.post('/:conversation_id/ai-draft', async (c) => {
+    const convId = c.req.param('conversation_id');
+
+    const conv = await c.env.DB.prepare('SELECT department FROM conversations WHERE id = ?').bind(convId).first();
+    if (!conv) return err('Conversation not found', 404);
+
+    const { results: history } = await c.env.DB.prepare(
+        `SELECT sender_type, body_text FROM messages
+         WHERE conversation_id = ? AND is_internal = 0 AND sender_type != 'system'
+         ORDER BY created_at DESC LIMIT 10`
+    ).bind(convId).all();
+
+    const draft = await draftAgentReplySuggestion(c.env, history.reverse(), conv.department);
+    return json({ draft });
 });
 
 export { messages };

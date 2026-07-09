@@ -2,7 +2,7 @@ import { Hono }          from 'hono';
 import { requireAuth }   from '../lib/auth.js';
 import { json, err, now, uuid, compileTemplate } from '../lib/utils.js';
 import { MetaClient, buildTemplateComponents } from '../lib/meta.js';
-import { broadcastToRoom } from './webhook.js';
+import { broadcastToRoom, logSystemEvent } from './webhook.js';
 
 const conversations = new Hono();
 
@@ -107,6 +107,14 @@ conversations.get('/', async (c) => {
         params.push(agent.id);
     }
 
+    // "snoozed" is its own view; every other queue hides snoozed conversations
+    // (they wake up automatically once the candidate replies, or the time passes).
+    if (queue === 'snoozed') {
+        where += " AND c.snoozed_until IS NOT NULL AND c.snoozed_until > datetime('now')";
+    } else {
+        where += " AND (c.snoozed_until IS NULL OR c.snoozed_until <= datetime('now'))";
+    }
+
     // Non-admins only ever see conversations routed to their own department.
     // Admins can optionally filter with ?department=, or omit it to see all.
     const dept = agent.role === 'admin' ? c.req.query('department') : agent.department;
@@ -123,6 +131,9 @@ conversations.get('/', async (c) => {
                 m.body_text AS last_message,
                 m.created_at AS last_message_at,
                 m.sender_type AS last_sender_type,
+                (SELECT sender_type FROM messages
+                 WHERE conversation_id = c.id AND is_internal = 0 AND sender_type != 'system'
+                 ORDER BY created_at DESC LIMIT 1) AS last_customer_facing_sender,
                 (SELECT COUNT(*) FROM messages
                  WHERE conversation_id = c.id AND sender_type = 'candidate'
                    AND status = 'delivered') AS unread_count
@@ -178,6 +189,8 @@ conversations.post('/:id/claim', async (c) => {
         'UPDATE conversations SET assigned_agent_id = ?, updated_at = ? WHERE id = ?'
     ).bind(agent.id, ts, convId).run();
 
+    await logSystemEvent(c.env, convId, `${agent.name} claimed this conversation`);
+
     await broadcastToRoom(c.env, {
         type:            'conversation_claimed',
         conversation_id: convId,
@@ -210,6 +223,8 @@ conversations.post('/:id/release', async (c) => {
         'UPDATE conversations SET assigned_agent_id = NULL, updated_at = ? WHERE id = ?'
     ).bind(ts, convId).run();
 
+    await logSystemEvent(c.env, convId, `${agent.name} released this conversation`);
+
     await broadcastToRoom(c.env, {
         type:            'conversation_released',
         conversation_id: convId,
@@ -223,6 +238,7 @@ conversations.post('/:id/release', async (c) => {
 //  { "status": "resolved" | "pending" | "open" }
 // ─────────────────────────────────────────────────────────────────
 conversations.patch('/:id/status', async (c) => {
+    const agent = c.get('agent');
     const { status } = await c.req.json();
     const valid       = ['open', 'pending', 'resolved'];
     if (!valid.includes(status)) return err(`status must be one of: ${valid.join(', ')}`);
@@ -236,6 +252,8 @@ conversations.patch('/:id/status', async (c) => {
 
     if (result.meta.changes === 0) return err('Conversation not found', 404);
 
+    await logSystemEvent(c.env, convId, `Marked as ${status} by ${agent.name}`);
+
     await broadcastToRoom(c.env, {
         type:            'conversation_status_changed',
         conversation_id: convId,
@@ -243,6 +261,39 @@ conversations.patch('/:id/status', async (c) => {
     });
 
     return json({ success: true, status });
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  POST /api/conversations/:id/snooze
+//  { "until": "2026-07-10T09:00:00.000Z" } or { "until": null } to un-snooze.
+//  Auto-clears the moment the candidate sends a new message (see webhook.js).
+// ─────────────────────────────────────────────────────────────────
+conversations.post('/:id/snooze', async (c) => {
+    const agent  = c.get('agent');
+    const convId = c.req.param('id');
+    const { until } = await c.req.json();
+
+    const conv = await c.env.DB.prepare('SELECT * FROM conversations WHERE id = ?').bind(convId).first();
+    if (!conv) return err('Conversation not found', 404);
+    if (conv.assigned_agent_id !== agent.id && agent.role !== 'admin') {
+        return err('Forbidden — you do not own this conversation', 403);
+    }
+
+    if (until !== null && isNaN(new Date(until).getTime())) return err('until must be an ISO timestamp or null');
+
+    const ts = now();
+    await c.env.DB.prepare(
+        'UPDATE conversations SET snoozed_until = ?, updated_at = ? WHERE id = ?'
+    ).bind(until, ts, convId).run();
+
+    await logSystemEvent(c.env, convId,
+        until ? `${agent.name} snoozed this conversation until ${new Date(until).toLocaleString()}`
+              : `${agent.name} un-snoozed this conversation`
+    );
+
+    await broadcastToRoom(c.env, { type: 'conversation_snoozed', conversation_id: convId, snoozed_until: until });
+
+    return json({ success: true, snoozed_until: until });
 });
 
 export { conversations };
