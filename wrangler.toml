@@ -1,0 +1,47 @@
+name = "whatsapp-inbox"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# ── Static assets (login + dashboard HTML) ──────────────────────
+[assets]
+directory = "./public"
+
+# ── D1 Relational Database ────────────────────────────────────────
+[[d1_databases]]
+binding     = "DB"
+database_name = "whatsapp_inbox_db"
+database_id   = "b4d18c82-d6e6-427b-8c91-3cb02859bde7"
+migrations_dir = "migrations"
+
+# ── Durable Objects (WebSocket broadcast room) ────────────────────
+[[durable_objects.bindings]]
+name       = "INBOX_ROOM"
+class_name = "InboxRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["InboxRoom"]
+
+# ── Secrets (set via: wrangler secret put SECRET_NAME) ───────────
+# WHATSAPP_TOKEN          — permanent system user access token from Meta
+# WHATSAPP_PHONE_NUMBER_ID — phone number ID from Meta dashboard
+# WHATSAPP_APP_SECRET     — app secret for X-Hub-Signature-256 validation
+# WHATSAPP_VERIFY_TOKEN   — your custom string for webhook handshake
+# JWT_SECRET              — random 64-char string for agent session tokens
+# GROQ_API_KEY            — from console.groq.com — powers intent routing + after-hours replies
+
+# ── Environment variables (non-secret) ────────────────────────────
+[vars]
+GRAPH_API_VERSION  = "v20.0"
+WINDOW_HOURS       = "24"
+
+# Business hours — the after-hours AI agent only auto-replies outside this window.
+BUSINESS_TZ        = "Asia/Jakarta"
+BUSINESS_DAYS      = "Mon,Tue,Wed,Thu,Fri"
+BUSINESS_START     = "09:00"
+BUSINESS_END       = "18:00"
+
+# Groq models — classify uses a fast/cheap model, replies use a stronger one.
+GROQ_MODEL_CLASSIFY = "llama-3.1-8b-instant"
+GROQ_MODEL_REPLY    = "llama-3.3-70b-versatile"

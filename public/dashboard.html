@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhatsApp Shared Inbox — CTI Group</title>
+<style>
+/* ── Reset & Base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --wa-green:   #25d366;
+  --wa-dark:    #128c3e;
+  --sidebar-w:  300px;
+  --header-h:   56px;
+  --gray-50:    #f9fafb;
+  --gray-100:   #f3f4f6;
+  --gray-200:   #e5e7eb;
+  --gray-400:   #9ca3af;
+  --gray-600:   #4b5563;
+  --gray-800:   #1f2937;
+  --blue-500:   #3b82f6;
+  --red-500:    #ef4444;
+  --yellow-400: #facc15;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--gray-100);
+  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* ── Top Header ───────────────────────────────────────────────── */
+header {
+  height: var(--header-h); background: var(--wa-dark);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; flex-shrink: 0; z-index: 10;
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+.header-left { display: flex; align-items: center; gap: 10px; }
+.header-logo { color: #fff; font-size: 17px; font-weight: 700; letter-spacing: -.3px; }
+.header-logo span { color: var(--wa-green); }
+.ws-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 600;
+  background: #dc2626; color: #fff; transition: background .3s;
+}
+.ws-badge.connected { background: var(--wa-green); }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.agent-pill {
+  background: rgba(255,255,255,.15); color: #fff; font-size: 13px;
+  padding: 5px 12px; border-radius: 99px; display: flex; align-items: center; gap: 6px;
+}
+.agent-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wa-green); }
+.btn-icon {
+  background: rgba(255,255,255,.12); border: none; color: #fff;
+  padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px;
+  transition: background .2s;
+}
+.btn-icon:hover { background: rgba(255,255,255,.25); }
+
+/* ── Main Layout ──────────────────────────────────────────────── */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar — Conversation List ─────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w); background: #fff; border-right: 1px solid var(--gray-200);
+  display: flex; flex-direction: column; flex-shrink: 0;
+}
+.sidebar-header {
+  padding: 12px 14px; border-bottom: 1px solid var(--gray-200); flex-shrink: 0;
+}
+.sidebar-header h2 { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 10px; }
+.queue-tabs { display: flex; gap: 4px; }
+.queue-tab {
+  flex: 1; padding: 6px 4px; border: 1.5px solid var(--gray-200);
+  background: none; border-radius: 6px; font-size: 11px; font-weight: 600;
+  color: var(--gray-600); cursor: pointer; transition: all .15s;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+.queue-tab .tab-count {
+  font-size: 14px; font-weight: 700; color: var(--gray-800);
+}
+.queue-tab.active {
+  background: var(--wa-green); border-color: var(--wa-green); color: #fff;
+}
+.queue-tab.active .tab-count { color: #fff; }
+.search-box {
+  margin: 10px 14px 0; position: relative;
+}
+.search-box input {
+  width: 100%; padding: 8px 12px 8px 32px; border: 1.5px solid var(--gray-200);
+  border-radius: 8px; font-size: 13px; outline: none; background: var(--gray-50);
+}
+.search-box input:focus { border-color: var(--wa-green); }
+.search-box .icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--gray-400); font-size: 13px; pointer-events: none; }
+
+.conv-list { flex: 1; overflow-y: auto; }
+.conv-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--gray-100);
+  transition: background .15s; position: relative;
+}
+.conv-item:hover { background: var(--gray-50); }
+.conv-item.active { background: #e7f8ef; border-right: 3px solid var(--wa-green); }
+.conv-avatar {
+  width: 42px; height: 42px; border-radius: 50%; background: var(--wa-green);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 16px; flex-shrink: 0;
+}
+.conv-info { flex: 1; min-width: 0; }
+.conv-name { font-size: 13px; font-weight: 600; color: var(--gray-800);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-preview { font-size: 12px; color: var(--gray-400); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.conv-time { font-size: 11px; color: var(--gray-400); }
+.conv-badge {
+  background: var(--wa-green); color: #fff; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 99px; min-width: 18px; text-align: center;
+}
+.conv-status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--gray-300); flex-shrink: 0;
+}
+.conv-status-dot.unassigned { background: var(--yellow-400); }
+.conv-status-dot.mine       { background: var(--blue-500); }
+.dept-badge {
+  font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 99px;
+  text-transform: uppercase; letter-spacing: .3px; white-space: nowrap;
+}
+.dept-business    { background: #dbeafe; color: #1d4ed8; }
+.dept-recruitment { background: #ede9fe; color: #6d28d9; }
+.dept-j1          { background: #ffedd5; color: #c2410c; }
+.dept-general     { background: #f3f4f6; color: #4b5563; }
+.dept-filter {
+  width: 100%; margin-top: 8px; padding: 6px 8px; border: 1.5px solid var(--gray-200);
+  border-radius: 6px; font-size: 12px; color: var(--gray-800); background: #fff;
+}
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 200px; color: var(--gray-400); font-size: 13px; gap: 8px;
+}
+.empty-state .icon { font-size: 32px; }
+
+/* ── Chat Panel ──────────────────────────────────────────────── */
+.chat-panel {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  background: #e5ddd5;
+}
+.chat-header {
+  background: #ededed; border-bottom: 1px solid var(--gray-200);
+  padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+}
+.chat-header-info { flex: 1; }
+.chat-header-name { font-size: 15px; font-weight: 700; color: var(--gray-800); }
+.chat-header-sub  { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+.chat-actions { display: flex; gap: 8px; }
+.btn-sm {
+  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  border: 1.5px solid; cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.btn-claim   { border-color: var(--wa-green); color: var(--wa-dark);   background: #e7f8ef; }
+.btn-claim:hover { background: var(--wa-green); color: #fff; }
+.btn-release { border-color: var(--gray-400);  color: var(--gray-600); background: #fff; }
+.btn-release:hover { background: var(--gray-200); }
+.btn-resolve { border-color: var(--blue-500);  color: var(--blue-500); background: #eff6ff; }
+.btn-resolve:hover { background: var(--blue-500); color: #fff; }
+
+/* ── Message Thread ─────────────────────────────────────────── */
+.message-thread {
+  flex: 1; overflow-y: auto; padding: 16px 10vw;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.msg-row { display: flex; max-width: 65%; }
+.msg-row.candidate { align-self: flex-start; }
+.msg-row.agent     { align-self: flex-end;   flex-direction: row-reverse; }
+.msg-bubble {
+  padding: 8px 12px; border-radius: 8px; font-size: 14px; line-height: 1.45;
+  position: relative; word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12);
+}
+.msg-row.candidate .msg-bubble {
+  background: #fff; border-top-left-radius: 0;
+}
+.msg-row.agent .msg-bubble {
+  background: #d9fdd3; border-top-right-radius: 0;
+}
+.msg-row.agent .msg-bubble.ai-bubble {
+  background: #eef2ff; border: 1px dashed #a5b4fc;
+}
+.msg-row.system .msg-bubble {
+  background: rgba(255,255,255,.7); font-size: 12px;
+  color: var(--gray-600); border-radius: 8px; padding: 4px 10px;
+  align-self: center; font-style: italic;
+}
+.msg-bubble .msg-meta {
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+  margin-top: 4px;
+}
+.msg-time { font-size: 11px; color: var(--gray-400); }
+.msg-ticks { font-size: 13px; }
+.msg-ticks.sent      { color: var(--gray-400); }
+.msg-ticks.delivered { color: var(--gray-400); }
+.msg-ticks.read      { color: #53bdeb; }
+.msg-template-badge {
+  font-size: 10px; background: #fef3c7; color: #92400e;
+  border: 1px solid #fde68a; border-radius: 4px; padding: 1px 5px;
+  margin-bottom: 4px; display: inline-block;
+}
+.msg-agent-name { font-size: 11px; color: var(--wa-dark); font-weight: 600;
+  margin-bottom: 2px; }
+.date-divider {
+  align-self: center; background: rgba(255,255,255,.8);
+  font-size: 12px; color: var(--gray-600); padding: 3px 12px;
+  border-radius: 99px; margin: 8px 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+
+/* ── Input Area ──────────────────────────────────────────────── */
+.input-area {
+  background: #f0f0f0; border-top: 1px solid var(--gray-200);
+  padding: 10px 16px; flex-shrink: 0;
+}
+.window-warning {
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+  padding: 8px 12px; font-size: 12px; color: #92400e; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.window-warning svg { flex-shrink: 0; }
+.free-text-row { display: flex; gap: 8px; align-items: flex-end; }
+textarea#msg-input {
+  flex: 1; resize: none; border: 1.5px solid var(--gray-200); border-radius: 10px;
+  padding: 10px 14px; font-size: 14px; font-family: inherit;
+  outline: none; max-height: 120px; min-height: 44px; background: #fff;
+  transition: border-color .2s;
+}
+textarea#msg-input:focus { border-color: var(--wa-green); }
+.btn-send {
+  width: 44px; height: 44px; border-radius: 50%; background: var(--wa-green);
+  border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background .2s;
+}
+.btn-send:hover   { background: var(--wa-dark); }
+.btn-send:disabled { background: var(--gray-400); cursor: not-allowed; }
+.btn-send svg { width: 20px; height: 20px; fill: #fff; }
+
+/* Template picker */
+.template-section { display: none; }
+.template-section.visible { display: block; }
+.template-section h4 { font-size: 12px; font-weight: 700; color: var(--gray-600);
+  margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+.template-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.tpl-chip {
+  border: 1.5px solid var(--gray-200); background: #fff;
+  border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600;
+  color: var(--gray-600); cursor: pointer; transition: all .15s;
+}
+.tpl-chip:hover, .tpl-chip.active {
+  border-color: var(--wa-green); background: #e7f8ef; color: var(--wa-dark);
+}
+.tpl-preview {
+  background: #fff; border: 1.5px solid var(--gray-200); border-radius: 10px;
+  padding: 12px; font-size: 13px; color: var(--gray-800); line-height: 1.5;
+  margin-bottom: 10px; display: none;
+}
+.tpl-preview.visible { display: block; }
+.tpl-vars { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.tpl-var-row { display: flex; align-items: center; gap: 8px; }
+.tpl-var-label { font-size: 12px; color: var(--gray-600); min-width: 110px; font-weight: 600; }
+.tpl-var-input {
+  flex: 1; border: 1.5px solid var(--gray-200); border-radius: 6px;
+  padding: 6px 10px; font-size: 13px; outline: none;
+}
+.tpl-var-input:focus { border-color: var(--wa-green); }
+.btn-send-template {
+  width: 100%; padding: 10px; background: var(--wa-green); color: #fff;
+  border: none; border-radius: 8px; font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: background .2s;
+}
+.btn-send-template:hover { background: var(--wa-dark); }
+.btn-send-template:disabled { background: var(--gray-400); cursor: not-allowed; }
+
+/* ── No conversation selected ────────────────────────────────── */
+.no-conv {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: #e5ddd5; color: var(--gray-600); gap: 12px;
+}
+.no-conv .icon { font-size: 64px; opacity: .4; }
+.no-conv p { font-size: 14px; opacity: .7; }
+
+/* ── Toast notifications ─────────────────────────────────────── */
+#toast-container {
+  position: fixed; bottom: 24px; right: 24px;
+  display: flex; flex-direction: column; gap: 8px; z-index: 1000;
+}
+.toast {
+  background: var(--gray-800); color: #fff;
+  padding: 10px 16px; border-radius: 8px; font-size: 13px;
+  animation: slide-in .25s ease; max-width: 320px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+}
+.toast.success { background: var(--wa-dark); }
+.toast.error   { background: #dc2626; }
+@keyframes slide-in { from { transform: translateX(120%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gray-200); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header>
+  <div class="header-left">
+    <div class="header-logo">WA <span>Inbox</span></div>
+    <span class="ws-badge" id="ws-badge">● Connecting</span>
+  </div>
+  <div class="header-right">
+    <div class="agent-pill">
+      <div class="dot"></div>
+      <span id="agent-name-display">Agent</span>
+    </div>
+    <button class="btn-icon" onclick="logout()">Sign Out</button>
+  </div>
+</header>
+
+<!-- ── Main Layout ─────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h2>Conversations</h2>
+      <div class="queue-tabs">
+        <button class="queue-tab active" data-q="all">
+          <span class="tab-count" id="cnt-all">0</span>All
+        </button>
+        <button class="queue-tab" data-q="unassigned">
+          <span class="tab-count" id="cnt-unassigned">0</span>Queue
+        </button>
+        <button class="queue-tab" data-q="mine">
+          <span class="tab-count" id="cnt-mine">0</span>Mine
+        </button>
+      </div>
+    </div>
+    <div class="search-box">
+      <span class="icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Search candidate…">
+    </div>
+    <select class="dept-filter" id="dept-filter" style="display:none; margin: 8px 14px 0; width: calc(100% - 28px);">
+      <option value="">All Departments</option>
+      <option value="business">Business</option>
+      <option value="recruitment">Recruitment</option>
+      <option value="j1">J1 Program</option>
+      <option value="general">General</option>
+    </select>
+    <div class="conv-list" id="conv-list">
+      <div class="empty-state"><div class="icon">💬</div><span>No conversations yet</span></div>
+    </div>
+  </aside>
+
+  <!-- Chat Panel -->
+  <div class="chat-panel" id="chat-panel">
+    <div class="no-conv" id="no-conv-placeholder">
+      <div class="icon">💬</div>
+      <p>Select a conversation to start messaging</p>
+    </div>
+
+    <div id="chat-view" style="display:none; flex:1; flex-direction:column; overflow:hidden;">
+      <!-- Chat Header -->
+      <div class="chat-header">
+        <div class="conv-avatar" id="ch-avatar">?</div>
+        <div class="chat-header-info">
+          <div class="chat-header-name" id="ch-name">—</div>
+          <div class="chat-header-sub"  id="ch-sub">—</div>
+        </div>
+        <div class="chat-actions">
+          <button class="btn-sm btn-claim"   id="btn-claim"   onclick="claimConv()">Claim</button>
+          <button class="btn-sm btn-release" id="btn-release" onclick="releaseConv()">Release</button>
+          <button class="btn-sm btn-resolve" id="btn-resolve" onclick="resolveConv()">Resolve</button>
+        </div>
+      </div>
+
+      <!-- Message Thread -->
+      <div class="message-thread" id="message-thread"></div>
+
+      <!-- Input Area -->
+      <div class="input-area" id="input-area">
+        <!-- 24h window warning (shown when outside window) -->
+        <div class="window-warning" id="window-warning" style="display:none">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="#d97706"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+          24-hour messaging window closed — only approved templates may be sent.
+        </div>
+
+        <!-- Free-text input (inside window) -->
+        <div id="free-text-area">
+          <div class="free-text-row">
+            <textarea id="msg-input" placeholder="Type a message…" rows="1"></textarea>
+            <button class="btn-send" id="btn-send" title="Send">
+              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Template picker (outside window) -->
+        <div class="template-section" id="template-section">
+          <h4>Select Approved Template</h4>
+          <div class="template-grid" id="template-grid"></div>
+          <div class="tpl-preview" id="tpl-preview"></div>
+          <div class="tpl-vars"   id="tpl-vars"></div>
+          <button class="btn-send-template" id="btn-send-template" disabled onclick="sendTemplate()">
+            Send Template
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────────────────────────
+const STATE = {
+  token:       localStorage.getItem('wb_token'),
+  agent:       JSON.parse(localStorage.getItem('wb_agent') ?? 'null'),
+  activeConvId: null,
+  convMap:     new Map(),   // id → conversation object
+  queue:       'all',
+  ws:          null,
+  templates:   [],
+  activeTpl:   null,
+  windowOpen:  false,
+  deptFilter:  '',
+};
+
+// Guard — redirect to login if no token
+if (!STATE.token || !STATE.agent) window.location.href = '/';
+
+document.getElementById('agent-name-display').textContent = STATE.agent.name;
+
+if (STATE.agent.role === 'admin') {
+  const deptFilterEl = document.getElementById('dept-filter');
+  deptFilterEl.style.display = '';
+  deptFilterEl.addEventListener('change', () => {
+    STATE.deptFilter = deptFilterEl.value;
+    loadConversations();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  API helpers
+// ─────────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization:  'Bearer ' + STATE.token,
+      ...(opts.headers ?? {}),
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? data.detail ?? 'Request failed');
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Toast
+// ─────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').append(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  WebSocket connection
+// ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws    = new WebSocket(`${proto}://${location.host}/ws?token=${STATE.token}`);
+  STATE.ws    = ws;
+
+  ws.onopen = () => {
+    const badge = document.getElementById('ws-badge');
+    badge.textContent = '● Live';
+    badge.className   = 'ws-badge connected';
+  };
+
+  ws.onclose = () => {
+    const badge = document.getElementById('ws-badge');
+    badge.textContent = '● Reconnecting';
+    badge.className   = 'ws-badge';
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (e) => {
+    try { handleWSEvent(JSON.parse(e.data)); }
+    catch { /* ignore */ }
+  };
+
+  // Keep-alive ping
+  setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
+  }, 25_000);
+}
+
+function handleWSEvent(evt) {
+  switch (evt.type) {
+
+    case 'new_message': {
+      const conv = evt.conversation ?? STATE.convMap.get(evt.message?.conversation_id);
+      if (conv) {
+        const existing = STATE.convMap.get(conv.id) ?? conv;
+        existing.last_message     = evt.message.body_text;
+        existing.last_message_at  = evt.message.created_at;
+        existing.last_sender_type = evt.message.sender_type;
+        if (evt.message.sender_type === 'candidate') existing.unread_count = (existing.unread_count ?? 0) + 1;
+        if (evt.conversation) {
+          STATE.convMap.set(conv.id, { ...existing, ...evt.conversation });
+        }
+        renderConvList();
+      } else {
+        // New conversation not yet in list — reload
+        loadConversations();
+      }
+      // Append message to open thread
+      if (evt.message.conversation_id === STATE.activeConvId) {
+        appendMessage(evt.message);
+        scrollThread();
+        // Mark as read & reset badge
+        const ac = STATE.convMap.get(STATE.activeConvId);
+        if (ac) { ac.unread_count = 0; renderConvList(); }
+      } else if (evt.message.sender_type === 'candidate') {
+        const name = conv?.candidate_name ?? 'Someone';
+        toast(`💬 New message from ${name}`, 'info');
+      }
+      break;
+    }
+
+    case 'message_status': {
+      // Update tick on rendered message
+      const el = document.querySelector(`[data-meta="${evt.meta_message_id}"] .msg-ticks`);
+      if (el) {
+        el.textContent  = statusTick(evt.status);
+        el.className    = `msg-ticks ${evt.status}`;
+      }
+      break;
+    }
+
+    case 'conversation_claimed': {
+      const c = STATE.convMap.get(evt.conversation_id);
+      if (c) {
+        c.assigned_agent_id = evt.agent_id;
+        c.agent_name        = evt.agent_name;
+        renderConvList();
+        if (evt.conversation_id === STATE.activeConvId) updateChatHeader(c);
+      }
+      if (evt.agent_id !== STATE.agent.id) {
+        toast(`🔒 ${evt.agent_name} claimed a conversation`);
+      }
+      break;
+    }
+
+    case 'conversation_released': {
+      const c = STATE.convMap.get(evt.conversation_id);
+      if (c) { c.assigned_agent_id = null; c.agent_name = null; renderConvList(); }
+      break;
+    }
+
+    case 'conversation_status_changed': {
+      const c = STATE.convMap.get(evt.conversation_id);
+      if (c) { c.status = evt.status; renderConvList(); }
+      break;
+    }
+
+    case 'agent_online':
+      toast(`🟢 ${evt.agent_name} is online`);
+      break;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Load conversations
+// ─────────────────────────────────────────────────────────────────
+async function loadConversations() {
+  try {
+    const deptQS = STATE.deptFilter ? `&department=${encodeURIComponent(STATE.deptFilter)}` : '';
+    const [all, unassigned, mine] = await Promise.all([
+      api(`/conversations?queue=all&limit=100${deptQS}`),
+      api(`/conversations?queue=unassigned&limit=100${deptQS}`),
+      api(`/conversations?queue=mine&limit=100${deptQS}`),
+    ]);
+
+    STATE.convMap.clear();
+    all.conversations.forEach(c => STATE.convMap.set(c.id, c));
+
+    document.getElementById('cnt-all').textContent        = all.conversations.length;
+    document.getElementById('cnt-unassigned').textContent = unassigned.conversations.length;
+    document.getElementById('cnt-mine').textContent       = mine.conversations.length;
+
+    renderConvList();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderConvList() {
+  const q      = STATE.queue;
+  const search = document.getElementById('search-input').value.toLowerCase();
+
+  let items = [...STATE.convMap.values()].filter(c => {
+    if (c.status !== 'open') return false;
+    if (q === 'unassigned' && c.assigned_agent_id)              return false;
+    if (q === 'mine'       && c.assigned_agent_id !== STATE.agent.id) return false;
+    if (search && !c.candidate_name?.toLowerCase().includes(search)
+               && !c.candidate_phone?.includes(search))         return false;
+    return true;
+  });
+
+  items.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+  const el = document.getElementById('conv-list');
+  if (!items.length) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">💬</div><span>No conversations</span></div>`;
+    return;
+  }
+
+  el.innerHTML = items.map(c => {
+    const initials = (c.candidate_name ?? c.candidate_phone ?? '?').charAt(0).toUpperCase();
+    const isActive = c.id === STATE.activeConvId;
+    const dotClass = !c.assigned_agent_id ? 'unassigned' : c.assigned_agent_id === STATE.agent.id ? 'mine' : '';
+    const badge    = (c.unread_count > 0) ? `<div class="conv-badge">${c.unread_count}</div>` : '';
+    const preview  = c.last_message ? escHtml(c.last_message).slice(0, 45) : '<em>No messages yet</em>';
+    const time     = c.last_message_at ? relTime(c.last_message_at) : '';
+    const deptBadge = c.department ? `<span class="dept-badge dept-${c.department}">${c.department}</span>` : '';
+
+    return `
+      <div class="conv-item ${isActive ? 'active' : ''}" onclick="openConv('${c.id}')">
+        <div class="conv-avatar">${initials}</div>
+        <div class="conv-info">
+          <div class="conv-name">${escHtml(c.candidate_name ?? c.candidate_phone)}</div>
+          <div class="conv-preview">${preview}</div>
+        </div>
+        <div class="conv-meta">
+          ${deptBadge}
+          <div class="conv-time">${time}</div>
+          ${badge}
+          <div class="conv-status-dot ${dotClass}" title="${dotClass || 'assigned'}"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Open conversation
+// ─────────────────────────────────────────────────────────────────
+async function openConv(id) {
+  STATE.activeConvId = id;
+  renderConvList();
+
+  const conv = STATE.convMap.get(id);
+  if (!conv) return;
+
+  // Show chat view
+  document.getElementById('no-conv-placeholder').style.display = 'none';
+  const view = document.getElementById('chat-view');
+  view.style.display = 'flex';
+
+  updateChatHeader(conv);
+  conv.unread_count = 0;
+
+  // Load messages
+  const thread = document.getElementById('message-thread');
+  thread.innerHTML = '<div class="date-divider">Loading…</div>';
+
+  try {
+    const { messages } = await api(`/messages/${id}?limit=100`);
+    renderMessages(messages);
+    scrollThread();
+  } catch (e) {
+    thread.innerHTML = `<div class="empty-state"><span>Failed to load messages</span></div>`;
+  }
+
+  // Check 24-h window
+  await refreshWindow(id);
+}
+
+function updateChatHeader(conv) {
+  document.getElementById('ch-avatar').textContent =
+    (conv.candidate_name ?? conv.candidate_phone ?? '?').charAt(0).toUpperCase();
+  document.getElementById('ch-name').textContent =
+    conv.candidate_name ?? conv.candidate_phone;
+  const deptPrefix = conv.department ? `[${conv.department.toUpperCase()}] ` : '';
+  document.getElementById('ch-sub').textContent = deptPrefix +
+    (conv.assigned_agent_id
+      ? `Assigned to ${conv.agent_name ?? conv.assigned_agent_id}`
+      : '⚠ Unassigned — available to claim');
+
+  const isMine = conv.assigned_agent_id === STATE.agent.id;
+  document.getElementById('btn-claim').style.display   = (!conv.assigned_agent_id) ? '' : 'none';
+  document.getElementById('btn-release').style.display = isMine ? '' : 'none';
+  document.getElementById('btn-resolve').style.display = isMine ? '' : 'none';
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Render messages
+// ─────────────────────────────────────────────────────────────────
+function renderMessages(msgs) {
+  const thread = document.getElementById('message-thread');
+  if (!msgs.length) {
+    thread.innerHTML = '<div class="empty-state"><span>No messages yet</span></div>';
+    return;
+  }
+
+  let lastDate = '';
+  thread.innerHTML = msgs.map(m => {
+    const d    = new Date(m.created_at);
+    const date = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const div  = (date !== lastDate) ? `<div class="date-divider">${date}</div>` : '';
+    lastDate   = date;
+    return div + messageBubble(m);
+  }).join('');
+}
+
+function appendMessage(m) {
+  const thread = document.getElementById('message-thread');
+  // Remove empty state
+  thread.querySelector('.empty-state')?.remove();
+  thread.insertAdjacentHTML('beforeend', messageBubble(m));
+}
+
+function messageBubble(m) {
+  const t    = new Date(m.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const tick = m.sender_type === 'agent' ? `<span class="msg-ticks ${m.status}">${statusTick(m.status)}</span>` : '';
+  const tplBadge = m.template_name ? `<div class="msg-template-badge">📋 ${m.template_name}</div>` : '';
+  const isAi = m.is_ai_generated === 1 || m.is_ai_generated === true;
+  const agentLabel = m.sender_type === 'agent'
+    ? `<div class="msg-agent-name">${isAi ? '🤖 CTI Assistant (auto-reply)' : escHtml(m.agent_name ?? 'Agent')}</div>` : '';
+
+  if (m.sender_type === 'system') {
+    return `<div class="msg-row system"><div class="msg-bubble">${escHtml(m.body_text ?? '')}</div></div>`;
+  }
+
+  return `
+    <div class="msg-row ${m.sender_type}" data-meta="${m.meta_message_id ?? ''}">
+      <div class="msg-bubble ${isAi ? 'ai-bubble' : ''}">
+        ${agentLabel}
+        ${tplBadge}
+        ${escHtml(m.body_text ?? `[${m.media_type ?? 'media'}]`)}
+        <div class="msg-meta">
+          <span class="msg-time">${t}</span>
+          ${tick}
+        </div>
+      </div>
+    </div>`;
+}
+
+function statusTick(status) {
+  return status === 'sent' ? '✓' : status === 'delivered' ? '✓✓' : status === 'read' ? '✓✓' : '✕';
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  24-hour window management
+// ─────────────────────────────────────────────────────────────────
+async function refreshWindow(convId) {
+  try {
+    const { is_inside_window, remaining_hours } = await api(`/messages/window/${convId}`);
+    STATE.windowOpen = is_inside_window;
+    applyWindowUI(is_inside_window, remaining_hours);
+  } catch {
+    STATE.windowOpen = false;
+    applyWindowUI(false, 0);
+  }
+}
+
+function applyWindowUI(open, remainingHours) {
+  document.getElementById('window-warning').style.display = open ? 'none' : 'flex';
+  document.getElementById('free-text-area').style.display = open ? ''     : 'none';
+
+  const tplSection = document.getElementById('template-section');
+  if (open) {
+    tplSection.classList.remove('visible');
+  } else {
+    tplSection.classList.add('visible');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Send free-text message
+// ─────────────────────────────────────────────────────────────────
+document.getElementById('btn-send').addEventListener('click', sendFreeText);
+document.getElementById('msg-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFreeText(); }
+});
+document.getElementById('msg-input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+async function sendFreeText() {
+  const input = document.getElementById('msg-input');
+  const text  = input.value.trim();
+  if (!text || !STATE.activeConvId) return;
+
+  const btn = document.getElementById('btn-send');
+  btn.disabled = true;
+
+  try {
+    await api('/messages/send', {
+      method: 'POST',
+      body:   { conversation_id: STATE.activeConvId, body_text: text },
+    });
+    input.value = '';
+    input.style.height = 'auto';
+  } catch (e) {
+    toast('Send failed: ' + e.message, 'error');
+    if (e.message === 'outside_window') {
+      STATE.windowOpen = false;
+      applyWindowUI(false, 0);
+    }
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Template send
+// ─────────────────────────────────────────────────────────────────
+async function loadTemplates() {
+  try {
+    const { templates } = await api('/templates');
+    STATE.templates = templates;
+    renderTemplateGrid();
+  } catch {}
+}
+
+function renderTemplateGrid() {
+  const grid = document.getElementById('template-grid');
+  grid.innerHTML = STATE.templates.map(t =>
+    `<button class="tpl-chip" data-id="${t.id}" onclick="selectTemplate('${t.id}')">${t.name.replace(/_/g,' ')}</button>`
+  ).join('');
+}
+
+function selectTemplate(id) {
+  STATE.activeTpl = STATE.templates.find(t => t.id === id);
+  if (!STATE.activeTpl) return;
+
+  // Highlight chip
+  document.querySelectorAll('.tpl-chip').forEach(el =>
+    el.classList.toggle('active', el.dataset.id === id)
+  );
+
+  // Preview
+  const preview = document.getElementById('tpl-preview');
+  preview.textContent = STATE.activeTpl.body_text;
+  preview.classList.add('visible');
+
+  // Variable inputs
+  const varsEl  = document.getElementById('tpl-vars');
+  const varDefs = STATE.activeTpl.variables ?? [];
+  varsEl.innerHTML = varDefs.map(v => `
+    <div class="tpl-var-row">
+      <span class="tpl-var-label">${escHtml(v.label)}</span>
+      <input class="tpl-var-input" data-key="${v.key}" placeholder="Enter ${escHtml(v.label)}…">
+    </div>`
+  ).join('');
+
+  document.getElementById('btn-send-template').disabled = false;
+}
+
+async function sendTemplate() {
+  if (!STATE.activeTpl || !STATE.activeConvId) return;
+
+  const vars = {};
+  document.querySelectorAll('.tpl-var-input').forEach(el => {
+    vars[el.dataset.key] = el.value.trim();
+  });
+
+  // Validate all vars filled
+  const missing = STATE.activeTpl.variables.filter(v => !vars[v.key]);
+  if (missing.length) {
+    toast('Please fill in all template variables', 'error'); return;
+  }
+
+  const btn = document.getElementById('btn-send-template');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    await api('/messages/send', {
+      method: 'POST',
+      body:   {
+        conversation_id: STATE.activeConvId,
+        template_name:   STATE.activeTpl.name,
+        vars,
+      },
+    });
+    toast('Template sent ✓', 'success');
+    // Reset picker
+    STATE.activeTpl = null;
+    document.querySelectorAll('.tpl-chip').forEach(el => el.classList.remove('active'));
+    document.getElementById('tpl-preview').classList.remove('visible');
+    document.getElementById('tpl-vars').innerHTML = '';
+  } catch (e) {
+    toast('Send failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Template';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Conversation actions
+// ─────────────────────────────────────────────────────────────────
+async function claimConv() {
+  if (!STATE.activeConvId) return;
+  try {
+    await api(`/conversations/${STATE.activeConvId}/claim`, { method: 'POST' });
+    const c = STATE.convMap.get(STATE.activeConvId);
+    if (c) { c.assigned_agent_id = STATE.agent.id; c.agent_name = STATE.agent.name; }
+    updateChatHeader(c);
+    renderConvList();
+    toast('Conversation claimed ✓', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function releaseConv() {
+  if (!STATE.activeConvId) return;
+  try {
+    await api(`/conversations/${STATE.activeConvId}/release`, { method: 'POST' });
+    const c = STATE.convMap.get(STATE.activeConvId);
+    if (c) { c.assigned_agent_id = null; c.agent_name = null; }
+    updateChatHeader(c);
+    renderConvList();
+    toast('Conversation released');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function resolveConv() {
+  if (!STATE.activeConvId) return;
+  try {
+    await api(`/conversations/${STATE.activeConvId}/status`, {
+      method: 'PATCH', body: { status: 'resolved' },
+    });
+    STATE.convMap.delete(STATE.activeConvId);
+    STATE.activeConvId = null;
+    document.getElementById('chat-view').style.display = 'none';
+    document.getElementById('no-conv-placeholder').style.display = 'flex';
+    renderConvList();
+    toast('Marked as resolved ✓', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Queue tab switching
+// ─────────────────────────────────────────────────────────────────
+document.querySelectorAll('.queue-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.queue-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    STATE.queue = btn.dataset.q;
+    renderConvList();
+  });
+});
+
+// Search
+document.getElementById('search-input').addEventListener('input', renderConvList);
+
+// ─────────────────────────────────────────────────────────────────
+//  Utility helpers
+// ─────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function relTime(iso) {
+  const d = new Date(iso), now = Date.now();
+  const diff = now - d;
+  if (diff < 60_000)      return 'just now';
+  if (diff < 3_600_000)   return Math.floor(diff/60_000) + 'm';
+  if (diff < 86_400_000)  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function scrollThread() {
+  const t = document.getElementById('message-thread');
+  t.scrollTop = t.scrollHeight;
+}
+
+function logout() {
+  localStorage.clear();
+  window.location.href = '/';
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Initialise
+// ─────────────────────────────────────────────────────────────────
+connectWS();
+loadConversations();
+loadTemplates();
+
+// Refresh conversation list every 30 s (catch any missed WS events)
+setInterval(loadConversations, 30_000);
+// Refresh 24-h window status every 5 min for the active conversation
+setInterval(() => {
+  if (STATE.activeConvId) refreshWindow(STATE.activeConvId);
+}, 300_000);
+</script>
+</body>
+</html>
