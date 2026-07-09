@@ -384,6 +384,7 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
     </div>
     <button class="btn-icon" id="btn-team" onclick="openTeamModal()" style="display:none">👥 Team</button>
     <button class="btn-icon" id="btn-hours" onclick="openHoursModal()" style="display:none">⏰ Hours</button>
+    <button class="btn-icon" id="btn-broadcast" onclick="openBroadcastModal()" style="display:none">📢 Broadcast</button>
     <button class="btn-icon" onclick="openPasswordModal()">🔑 Password</button>
     <button class="btn-icon" onclick="logout()">Sign Out</button>
   </div>
@@ -470,6 +471,69 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
       <div class="tpl-preview" id="nc-tpl-preview"></div>
       <div class="tpl-vars" id="nc-tpl-vars"></div>
       <button class="btn-primary-full" id="btn-send-new-conv" onclick="submitNewConv()" disabled>Select a template first</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Broadcast Modal (admin only) ──────────────────────────────── -->
+<div class="modal-overlay" id="modal-broadcast" onclick="if(event.target===this) closeBroadcastModal()">
+  <div class="modal-box" style="width:480px;">
+    <div class="modal-header">
+      <h3>Broadcast</h3>
+      <button class="modal-close" onclick="closeBroadcastModal()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div id="bc-setup-view">
+        <p style="font-size:12px; color:var(--gray-600); margin-bottom:14px;">
+          Sends an approved template to every recipient below. WhatsApp requires a template
+          for anyone who hasn't messaged in — this cannot send free text. Existing
+          conversations are reused; new ones are created for numbers that don't have one yet.
+        </p>
+        <div class="form-row">
+          <label>Template</label>
+          <div class="template-grid" id="bc-template-grid"></div>
+        </div>
+        <div class="tpl-preview" id="bc-tpl-preview"></div>
+        <div class="tpl-vars" id="bc-tpl-vars"></div>
+        <p style="font-size:11px; color:var(--gray-400); margin:-4px 0 10px;">
+          The first variable above is filled per-recipient from the name column below — leave
+          it blank here. Any other variables are shared across everyone in this broadcast.
+        </p>
+        <div class="form-row">
+          <label>Department</label>
+          <select id="bc-department">
+            <option value="business">Business</option>
+            <option value="recruitment">Recruitment</option>
+            <option value="j1">J1 Program</option>
+            <option value="general">General</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Recipients — one per line: <code>phone,name</code></label>
+          <textarea id="bc-recipients" rows="6" placeholder="628123456789,Ahmad Fauzi&#10;628198765432,Siti Rahma"
+            style="width:100%; padding:8px 10px; border:1.5px solid var(--gray-200); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical;"
+            oninput="updateBroadcastCount()"></textarea>
+          <div id="bc-count" style="font-size:11px; color:var(--gray-600); margin-top:4px;">0 valid recipients</div>
+        </div>
+        <button class="btn-primary-full" id="btn-broadcast-send" onclick="startBroadcastConfirm()" disabled>Select a template first</button>
+      </div>
+
+      <div id="bc-progress-view" style="display:none;">
+        <p style="font-size:13px; color:var(--gray-800); margin-bottom:10px;">
+          Sending <strong id="bc-progress-total">0</strong> messages…
+        </p>
+        <div style="background:var(--gray-100); border-radius:8px; height:10px; overflow:hidden; margin-bottom:10px;">
+          <div id="bc-progress-bar" style="background:var(--wa-green); height:100%; width:0%; transition:width .3s;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--gray-600); margin-bottom:14px;">
+          <span>✓ Sent: <strong id="bc-progress-sent">0</strong></span>
+          <span>✕ Failed: <strong id="bc-progress-failed">0</strong></span>
+        </div>
+        <div id="bc-failed-list" style="max-height:160px; overflow-y:auto; display:none; margin-bottom:12px;"></div>
+        <button class="btn-primary-full" id="btn-broadcast-close" onclick="closeBroadcastModal()">Close</button>
+      </div>
+
     </div>
   </div>
 </div>
@@ -679,6 +743,7 @@ if (STATE.agent.role === 'admin') {
   });
   document.getElementById('btn-team').style.display = '';
   document.getElementById('btn-hours').style.display = '';
+  document.getElementById('btn-broadcast').style.display = '';
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -828,6 +893,183 @@ function selectNewConvTemplate(id) {
   const btn = document.getElementById('btn-send-new-conv');
   btn.disabled = false;
   btn.textContent = 'Send';
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Broadcast — bulk template send to many recipients (admin only)
+// ─────────────────────────────────────────────────────────────────
+let _bcTpl = null;
+let _bcConfirmArmed = false;
+let _bcPollTimer = null;
+
+function openBroadcastModal() {
+  document.getElementById('bc-setup-view').style.display = '';
+  document.getElementById('bc-progress-view').style.display = 'none';
+  document.getElementById('bc-department').value = STATE.agent.department;
+  document.getElementById('bc-recipients').value = '';
+  updateBroadcastCount();
+
+  _bcTpl = null;
+  _bcConfirmArmed = false;
+  document.getElementById('bc-tpl-preview').classList.remove('visible');
+  document.getElementById('bc-tpl-vars').innerHTML = '';
+  const btn = document.getElementById('btn-broadcast-send');
+  btn.disabled = true;
+  btn.textContent = 'Select a template first';
+  btn.classList.remove('btn-danger-armed');
+
+  const grid = document.getElementById('bc-template-grid');
+  grid.innerHTML = STATE.templates.map(t =>
+    `<button type="button" class="tpl-chip" data-id="${t.id}" onclick="selectBroadcastTemplate('${t.id}')">${t.name.replace(/_/g,' ')}</button>`
+  ).join('');
+
+  document.getElementById('modal-broadcast').classList.add('visible');
+}
+
+function closeBroadcastModal() {
+  document.getElementById('modal-broadcast').classList.remove('visible');
+  if (_bcPollTimer) { clearInterval(_bcPollTimer); _bcPollTimer = null; }
+  loadConversations();
+}
+
+function selectBroadcastTemplate(id) {
+  _bcTpl = STATE.templates.find(t => t.id === id);
+  if (!_bcTpl) return;
+
+  document.querySelectorAll('#bc-template-grid .tpl-chip').forEach(el =>
+    el.classList.toggle('active', el.dataset.id === id)
+  );
+
+  const preview = document.getElementById('bc-tpl-preview');
+  preview.textContent = _bcTpl.body_text;
+  preview.classList.add('visible');
+
+  // Key "1" is always the per-recipient name — only show inputs for the rest.
+  const sharedVarDefs = (_bcTpl.variables ?? []).filter(v => v.key !== '1');
+  const varsEl = document.getElementById('bc-tpl-vars');
+  varsEl.innerHTML = sharedVarDefs.map(v => `
+    <div class="tpl-var-row">
+      <span class="tpl-var-label">${escHtml(v.label)}</span>
+      <input class="tpl-var-input" data-key="${v.key}" placeholder="Enter ${escHtml(v.label)}…">
+    </div>`
+  ).join('');
+
+  updateBroadcastCount();
+}
+
+function parseBroadcastRecipients() {
+  const lines = document.getElementById('bc-recipients').value.split('\n');
+  const recipients = [];
+  for (const line of lines) {
+    const [phoneRaw, ...rest] = line.split(',');
+    const phone = (phoneRaw ?? '').replace(/[^\d]/g, '');
+    if (!phone) continue;
+    recipients.push({ phone, name: rest.join(',').trim() || null });
+  }
+  return recipients;
+}
+
+function updateBroadcastCount() {
+  const recipients = parseBroadcastRecipients();
+  document.getElementById('bc-count').textContent = `${recipients.length} valid recipient${recipients.length === 1 ? '' : 's'}`;
+
+  const btn = document.getElementById('btn-broadcast-send');
+  if (_bcTpl && recipients.length) {
+    btn.disabled = false;
+    if (!_bcConfirmArmed) btn.textContent = `Send to ${recipients.length} recipient${recipients.length === 1 ? '' : 's'}`;
+  } else {
+    btn.disabled = true;
+    btn.textContent = _bcTpl ? '0 valid recipients' : 'Select a template first';
+  }
+}
+
+function startBroadcastConfirm() {
+  const recipients = parseBroadcastRecipients();
+  if (!_bcTpl || !recipients.length) return;
+
+  const btn = document.getElementById('btn-broadcast-send');
+  if (!_bcConfirmArmed) {
+    _bcConfirmArmed = true;
+    btn.textContent = `⚠ Click again to confirm sending to ${recipients.length} people`;
+    btn.style.background = 'var(--red-500)';
+    setTimeout(() => {
+      // Auto-disarm after a few seconds so a stray click later doesn't fire it.
+      if (_bcConfirmArmed) { _bcConfirmArmed = false; updateBroadcastCount(); btn.style.background = ''; }
+    }, 6000);
+    return;
+  }
+
+  submitBroadcast(recipients);
+}
+
+async function submitBroadcast(recipients) {
+  const btn = document.getElementById('btn-broadcast-send');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+
+  const sharedVars = {};
+  document.querySelectorAll('#bc-tpl-vars .tpl-var-input').forEach(el => { sharedVars[el.dataset.key] = el.value.trim(); });
+
+  try {
+    const { broadcast } = await api('/broadcasts', {
+      method: 'POST',
+      body: {
+        template_name: _bcTpl.name,
+        department: document.getElementById('bc-department').value,
+        vars: sharedVars,
+        recipients,
+      },
+    });
+    toast('Broadcast started ✓', 'success');
+    showBroadcastProgress(broadcast.id, broadcast.total);
+  } catch (e) {
+    toast('Failed to start broadcast: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.style.background = '';
+    _bcConfirmArmed = false;
+    updateBroadcastCount();
+  }
+}
+
+function showBroadcastProgress(id, total) {
+  document.getElementById('bc-setup-view').style.display = 'none';
+  document.getElementById('bc-progress-view').style.display = '';
+  document.getElementById('bc-progress-total').textContent = total;
+  document.getElementById('btn-broadcast-close').textContent = 'Close (keeps sending in background)';
+
+  const poll = async () => {
+    try {
+      const { broadcast, recipients } = await api(`/broadcasts/${id}`);
+      const done = broadcast.sent_count + broadcast.failed_count;
+      const pct = broadcast.total ? Math.round((done / broadcast.total) * 100) : 0;
+
+      document.getElementById('bc-progress-bar').style.width = pct + '%';
+      document.getElementById('bc-progress-sent').textContent = broadcast.sent_count;
+      document.getElementById('bc-progress-failed').textContent = broadcast.failed_count;
+
+      const failedList = document.getElementById('bc-failed-list');
+      const failed = recipients.filter(r => r.status === 'failed');
+      if (failed.length) {
+        failedList.style.display = '';
+        failedList.innerHTML = failed.map(r => `
+          <div style="font-size:11px; color:var(--red-500); padding:4px 0; border-bottom:1px solid var(--gray-100);">
+            ${escHtml(r.phone)} ${r.name ? '(' + escHtml(r.name) + ')' : ''} — ${escHtml(r.error ?? 'unknown error')}
+          </div>`).join('');
+      }
+
+      if (broadcast.status === 'completed') {
+        clearInterval(_bcPollTimer);
+        _bcPollTimer = null;
+        document.getElementById('btn-broadcast-close').textContent = 'Close';
+        toast(`Broadcast complete — ${broadcast.sent_count} sent, ${broadcast.failed_count} failed`, broadcast.failed_count ? 'error' : 'success');
+      }
+    } catch (e) {
+      console.error('Broadcast poll failed', e);
+    }
+  };
+
+  poll();
+  _bcPollTimer = setInterval(poll, 1500);
 }
 
 async function submitNewConv() {

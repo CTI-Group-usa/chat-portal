@@ -7,6 +7,7 @@ import { conversations } from './routes/conversations.js';
 import { messages }      from './routes/messages.js';
 import { templates }     from './routes/templates.js';
 import { settings }      from './routes/settings.js';
+import { broadcasts }    from './routes/broadcasts.js';
 
 export { InboxRoom };   // Durable Object export — required by wrangler
 
@@ -30,6 +31,7 @@ app.route('/api/conversations', conversations);
 app.route('/api/messages',     messages);
 app.route('/api/templates',    templates);
 app.route('/api/settings',     settings);
+app.route('/api/broadcasts',   broadcasts);
 
 // ── WebSocket upgrade — proxied to Durable Object ─────────────────
 // GET /ws?token=JWT_TOKEN
