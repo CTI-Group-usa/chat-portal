@@ -17,17 +17,26 @@ settings.get('/business-hours', async (c) => {
 });
 
 // PUT /api/settings/business-hours — admin only
+// Body: { tz: "Asia/Jakarta", schedule: { Mon: {start,end}, ..., Sat: {start,end} } }
+// A day omitted from `schedule` is closed all day.
 settings.put('/business-hours', async (c) => {
     const agent = c.get('agent');
     if (agent.role !== 'admin') return err('Forbidden', 403);
 
-    const { tz, days, start, end } = await c.req.json();
+    const { tz, schedule } = await c.req.json();
 
     if (!tz || typeof tz !== 'string') return err('tz is required (IANA timezone, e.g. Asia/Jakarta)');
-    if (!Array.isArray(days) || !days.length || !days.every(d => VALID_DAYS.includes(d))) {
-        return err(`days must be a non-empty array from: ${VALID_DAYS.join(', ')}`);
+    if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule) || !Object.keys(schedule).length) {
+        return err('schedule must be a non-empty object of day -> {start, end}');
     }
-    if (!TIME_RE.test(start) || !TIME_RE.test(end)) return err('start/end must be in HH:MM 24h format');
+
+    for (const [day, hrs] of Object.entries(schedule)) {
+        if (!VALID_DAYS.includes(day)) return err(`Invalid day: ${day}`);
+        if (!hrs || !TIME_RE.test(hrs.start) || !TIME_RE.test(hrs.end)) {
+            return err(`${day}: start/end must be in HH:MM 24h format`);
+        }
+        if (hrs.start >= hrs.end) return err(`${day}: start time must be before end time`);
+    }
 
     // Validate the timezone is real by letting Intl throw on a bad IANA name.
     try {
@@ -36,7 +45,7 @@ settings.put('/business-hours', async (c) => {
         return err(`Unrecognized timezone: ${tz}`);
     }
 
-    const config = { tz, days, start, end };
+    const config = { tz, schedule };
     await setBusinessHoursConfig(c.env, config);
 
     return json({ businessHours: config });
