@@ -56,6 +56,52 @@ header {
 }
 .btn-icon:hover { background: rgba(255,255,255,.25); }
 
+/* ── Team Modal ───────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  display: none; align-items: center; justify-content: center; z-index: 2000;
+}
+.modal-overlay.visible { display: flex; }
+.modal-box {
+  background: #fff; border-radius: 12px; width: 480px; max-width: 92vw;
+  max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,.25);
+}
+.modal-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--gray-200);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-header h3 { font-size: 15px; font-weight: 700; color: var(--gray-800); }
+.modal-close { background: none; border: none; font-size: 18px; color: var(--gray-400); cursor: pointer; }
+.modal-body { padding: 16px 20px; }
+.team-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.team-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--gray-200); border-radius: 8px;
+}
+.team-row.inactive { opacity: .5; }
+.team-row-info { flex: 1; min-width: 0; }
+.team-row-name { font-size: 13px; font-weight: 600; color: var(--gray-800); }
+.team-row-meta { font-size: 11px; color: var(--gray-600); margin-top: 1px; }
+.btn-danger-sm {
+  padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+  border: 1.5px solid var(--red-500); color: var(--red-500); background: #fff; cursor: pointer;
+}
+.btn-danger-sm:hover { background: var(--red-500); color: #fff; }
+.form-row { margin-bottom: 10px; }
+.form-row label { display: block; font-size: 12px; font-weight: 600; color: var(--gray-600); margin-bottom: 4px; }
+.form-row input, .form-row select {
+  width: 100%; padding: 8px 10px; border: 1.5px solid var(--gray-200); border-radius: 6px;
+  font-size: 13px; outline: none;
+}
+.form-row input:focus, .form-row select:focus { border-color: var(--wa-green); }
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn-primary-full {
+  width: 100%; padding: 10px; background: var(--wa-green); color: #fff;
+  border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.btn-primary-full:hover { background: var(--wa-dark); }
+.btn-primary-full:disabled { background: var(--gray-400); cursor: not-allowed; }
+
 /* ── Main Layout ──────────────────────────────────────────────── */
 .main { display: flex; flex: 1; overflow: hidden; }
 
@@ -322,9 +368,60 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
       <div class="dot"></div>
       <span id="agent-name-display">Agent</span>
     </div>
+    <button class="btn-icon" id="btn-team" onclick="openTeamModal()" style="display:none">👥 Team</button>
     <button class="btn-icon" onclick="logout()">Sign Out</button>
   </div>
 </header>
+
+<!-- ── Team Management Modal (admin only) ────────────────────────── -->
+<div class="modal-overlay" id="modal-team" onclick="if(event.target===this) closeTeamModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Team Members</h3>
+      <button class="modal-close" onclick="closeTeamModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="team-list" id="team-list">
+        <div class="empty-state" style="height:auto; padding:12px 0;">Loading…</div>
+      </div>
+
+      <h4 style="font-size:12px; font-weight:700; color:var(--gray-600); text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px;">
+        Add Team Member
+      </h4>
+      <div class="form-row">
+        <label>Full Name</label>
+        <input type="text" id="ta-name" placeholder="e.g. Robert Santoso">
+      </div>
+      <div class="form-row">
+        <label>Email</label>
+        <input type="email" id="ta-email" placeholder="e.g. robert@cti-usa.com">
+      </div>
+      <div class="form-row">
+        <label>Temporary Password</label>
+        <input type="text" id="ta-password" placeholder="Min. 8 characters">
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Department</label>
+          <select id="ta-department">
+            <option value="business">Business</option>
+            <option value="recruitment">Recruitment</option>
+            <option value="j1">J1 Program</option>
+            <option value="general">General</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Role</label>
+          <select id="ta-role">
+            <option value="recruiter">Agent</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary-full" id="btn-add-agent" onclick="submitAddAgent()">Add Team Member</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Main Layout ─────────────────────────────────────────────── -->
 <div class="main">
@@ -451,6 +548,91 @@ if (STATE.agent.role === 'admin') {
     STATE.deptFilter = deptFilterEl.value;
     loadConversations();
   });
+  document.getElementById('btn-team').style.display = '';
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Team management (admin only)
+// ─────────────────────────────────────────────────────────────────
+const DEPT_LABELS = { business: 'Business', recruitment: 'Recruitment', j1: 'J1 Program', general: 'General' };
+
+function openTeamModal() {
+  document.getElementById('modal-team').classList.add('visible');
+  loadTeam();
+}
+
+function closeTeamModal() {
+  document.getElementById('modal-team').classList.remove('visible');
+}
+
+async function loadTeam() {
+  const list = document.getElementById('team-list');
+  list.innerHTML = '<div class="empty-state" style="height:auto; padding:12px 0;">Loading…</div>';
+  try {
+    const { agents } = await api('/agents');
+    renderTeamList(agents);
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state" style="height:auto; padding:12px 0;">Failed to load: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderTeamList(agentsList) {
+  const list = document.getElementById('team-list');
+  if (!agentsList.length) {
+    list.innerHTML = '<div class="empty-state" style="height:auto; padding:12px 0;">No team members yet</div>';
+    return;
+  }
+  list.innerHTML = agentsList.map(a => `
+    <div class="team-row ${a.is_active ? '' : 'inactive'}">
+      <div class="dept-badge dept-${a.department}">${DEPT_LABELS[a.department] ?? a.department}</div>
+      <div class="team-row-info">
+        <div class="team-row-name">${escHtml(a.name)} ${a.role === 'admin' ? '· Admin' : ''}</div>
+        <div class="team-row-meta">${escHtml(a.email)}${a.is_active ? '' : ' · deactivated'}</div>
+      </div>
+      ${a.id !== STATE.agent.id && a.is_active
+        ? `<button class="btn-danger-sm" onclick="deactivateAgent('${a.id}')">Deactivate</button>`
+        : ''}
+    </div>`
+  ).join('');
+}
+
+async function submitAddAgent() {
+  const name       = document.getElementById('ta-name').value.trim();
+  const email      = document.getElementById('ta-email').value.trim();
+  const password   = document.getElementById('ta-password').value;
+  const department = document.getElementById('ta-department').value;
+  const role       = document.getElementById('ta-role').value;
+
+  if (!name || !email || !password) { toast('Name, email, and password are required', 'error'); return; }
+  if (password.length < 8) { toast('Password must be at least 8 characters', 'error'); return; }
+
+  const btn = document.getElementById('btn-add-agent');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+
+  try {
+    await api('/agents', { method: 'POST', body: { name, email, password, role, department } });
+    toast(`${name} added ✓`, 'success');
+    document.getElementById('ta-name').value = '';
+    document.getElementById('ta-email').value = '';
+    document.getElementById('ta-password').value = '';
+    loadTeam();
+  } catch (e) {
+    toast('Failed to add: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add Team Member';
+  }
+}
+
+async function deactivateAgent(id) {
+  try {
+    await api(`/agents/${id}`, { method: 'DELETE' });
+    toast('Team member deactivated', 'success');
+    loadTeam();
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
