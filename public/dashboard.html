@@ -369,9 +369,35 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
       <span id="agent-name-display">Agent</span>
     </div>
     <button class="btn-icon" id="btn-team" onclick="openTeamModal()" style="display:none">👥 Team</button>
+    <button class="btn-icon" onclick="openPasswordModal()">🔑 Password</button>
     <button class="btn-icon" onclick="logout()">Sign Out</button>
   </div>
 </header>
+
+<!-- ── Change Password Modal (all agents) ────────────────────────── -->
+<div class="modal-overlay" id="modal-password" onclick="if(event.target===this) closePasswordModal()">
+  <div class="modal-box" style="width:380px;">
+    <div class="modal-header">
+      <h3>Change Password</h3>
+      <button class="modal-close" onclick="closePasswordModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row" id="pw-current-row">
+        <label>Current Password</label>
+        <input type="password" id="pw-current" autocomplete="current-password">
+      </div>
+      <div class="form-row">
+        <label>New Password</label>
+        <input type="password" id="pw-new" placeholder="Min. 8 characters" autocomplete="new-password">
+      </div>
+      <div class="form-row">
+        <label>Confirm New Password</label>
+        <input type="password" id="pw-confirm" autocomplete="new-password">
+      </div>
+      <button class="btn-primary-full" id="btn-change-password" onclick="submitChangePassword()">Change Password</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Team Management Modal (admin only) ────────────────────────── -->
 <div class="modal-overlay" id="modal-team" onclick="if(event.target===this) closeTeamModal()">
@@ -632,6 +658,49 @@ async function deactivateAgent(id) {
     loadTeam();
   } catch (e) {
     toast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Change password (every agent, including admins)
+// ─────────────────────────────────────────────────────────────────
+function openPasswordModal() {
+  document.getElementById('pw-current').value = '';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  // Admins changing their OWN password don't need to supply the current one (server allows it).
+  document.getElementById('pw-current-row').style.display = STATE.agent.role === 'admin' ? 'none' : '';
+  document.getElementById('modal-password').classList.add('visible');
+}
+
+function closePasswordModal() {
+  document.getElementById('modal-password').classList.remove('visible');
+}
+
+async function submitChangePassword() {
+  const current = document.getElementById('pw-current').value;
+  const next    = document.getElementById('pw-new').value;
+  const confirm = document.getElementById('pw-confirm').value;
+
+  if (next.length < 8) { toast('New password must be at least 8 characters', 'error'); return; }
+  if (next !== confirm) { toast('Passwords do not match', 'error'); return; }
+
+  const btn = document.getElementById('btn-change-password');
+  btn.disabled = true;
+  btn.textContent = 'Changing…';
+
+  try {
+    await api(`/agents/${STATE.agent.id}/password`, {
+      method: 'PATCH',
+      body: { current_password: current, new_password: next },
+    });
+    toast('Password changed ✓', 'success');
+    closePasswordModal();
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Change Password';
   }
 }
 
