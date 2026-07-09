@@ -131,13 +131,13 @@ async function handleIncomingMessage(value, env) {
     await broadcastToRoom(env, { type: 'new_message', conversation: conv, message: savedMsg });
 
     // ── After-hours AI auto-reply — acknowledge + set expectations only ─
-    if (!isBusinessHours(env)) {
+    if (!(await isBusinessHours(env))) {
         await sendAfterHoursReply(env, conv, bodyText);
     }
 }
 
 async function sendAfterHoursReply(env, conv, bodyText) {
-    const hoursText = businessHoursText(env);
+    const hoursText = await businessHoursText(env);
     const reply = await draftAfterHoursReply(env, bodyText, conv.department, hoursText);
 
     try {

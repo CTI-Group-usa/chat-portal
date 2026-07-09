@@ -1,11 +1,34 @@
 // Business-hours check used to decide whether the after-hours AI agent should reply.
-// Configurable via wrangler.toml [vars]: BUSINESS_TZ, BUSINESS_DAYS, BUSINESS_START, BUSINESS_END.
+// Editable at runtime via PUT /api/settings/business-hours (stored in D1); falls back
+// to wrangler.toml [vars] BUSINESS_TZ/BUSINESS_DAYS/BUSINESS_START/BUSINESS_END, then
+// to a hardcoded default, so it always resolves to something even if unconfigured.
 
-export function isBusinessHours(env, at = new Date()) {
-    const tz    = env.BUSINESS_TZ    ?? 'Asia/Jakarta';
-    const days  = (env.BUSINESS_DAYS ?? 'Mon,Tue,Wed,Thu,Fri').split(',').map(d => d.trim());
-    const start = env.BUSINESS_START ?? '09:00';
-    const end   = env.BUSINESS_END   ?? '18:00';
+const DEFAULT_CONFIG = { tz: 'Asia/Jakarta', days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], start: '09:00', end: '18:00' };
+
+export async function getBusinessHoursConfig(env) {
+    try {
+        const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('business_hours').first();
+        if (row) return JSON.parse(row.value);
+    } catch (e) {
+        console.error('[Hours] Failed to load settings, falling back to env/defaults:', e.message);
+    }
+
+    return {
+        tz:    env.BUSINESS_TZ    ?? DEFAULT_CONFIG.tz,
+        days:  (env.BUSINESS_DAYS ?? DEFAULT_CONFIG.days.join(',')).split(',').map(d => d.trim()),
+        start: env.BUSINESS_START ?? DEFAULT_CONFIG.start,
+        end:   env.BUSINESS_END   ?? DEFAULT_CONFIG.end,
+    };
+}
+
+export async function setBusinessHoursConfig(env, config) {
+    await env.DB.prepare(
+        'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+    ).bind('business_hours', JSON.stringify(config)).run();
+}
+
+export async function isBusinessHours(env, at = new Date()) {
+    const { tz, days, start, end } = await getBusinessHoursConfig(env);
 
     const parts = new Intl.DateTimeFormat('en-US', {
         timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -22,10 +45,7 @@ export function isBusinessHours(env, at = new Date()) {
     return days.includes(weekday) && nowMinutes >= (sh * 60 + sm) && nowMinutes < (eh * 60 + em);
 }
 
-export function businessHoursText(env) {
-    const tz    = env.BUSINESS_TZ    ?? 'Asia/Jakarta';
-    const days  = env.BUSINESS_DAYS  ?? 'Mon,Tue,Wed,Thu,Fri';
-    const start = env.BUSINESS_START ?? '09:00';
-    const end   = env.BUSINESS_END   ?? '18:00';
-    return `${start}–${end} ${tz}, ${days}`;
+export async function businessHoursText(env) {
+    const { tz, days, start, end } = await getBusinessHoursConfig(env);
+    return `${start}–${end} ${tz}, ${days.join('/')}`;
 }

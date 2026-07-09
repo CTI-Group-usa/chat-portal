@@ -102,6 +102,12 @@ header {
 }
 .btn-primary-full:hover { background: var(--wa-dark); }
 .btn-primary-full:disabled { background: var(--gray-400); cursor: not-allowed; }
+.day-chip {
+  border: 1.5px solid var(--gray-200); background: #fff; border-radius: 8px;
+  padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--gray-600);
+  cursor: pointer; transition: all .15s;
+}
+.day-chip.active { border-color: var(--wa-green); background: var(--wa-green); color: #fff; }
 
 /* ── Main Layout ──────────────────────────────────────────────── */
 .main { display: flex; flex: 1; overflow: hidden; }
@@ -371,10 +377,46 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
       <span id="agent-name-display">Agent</span>
     </div>
     <button class="btn-icon" id="btn-team" onclick="openTeamModal()" style="display:none">👥 Team</button>
+    <button class="btn-icon" id="btn-hours" onclick="openHoursModal()" style="display:none">⏰ Hours</button>
     <button class="btn-icon" onclick="openPasswordModal()">🔑 Password</button>
     <button class="btn-icon" onclick="logout()">Sign Out</button>
   </div>
 </header>
+
+<!-- ── Business Hours Modal (admin only) ─────────────────────────── -->
+<div class="modal-overlay" id="modal-hours" onclick="if(event.target===this) closeHoursModal()">
+  <div class="modal-box" style="width:380px;">
+    <div class="modal-header">
+      <h3>Business Hours</h3>
+      <button class="modal-close" onclick="closeHoursModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px; color:var(--gray-600); margin-bottom:14px;">
+        Outside these hours, the AI agent auto-acknowledges new conversations instead of
+        waiting for a team member to reply.
+      </p>
+      <div class="form-row">
+        <label>Timezone (IANA name)</label>
+        <input type="text" id="bh-tz" placeholder="e.g. Asia/Jakarta">
+      </div>
+      <div class="form-row">
+        <label>Active Days</label>
+        <div id="bh-days" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Start Time</label>
+          <input type="time" id="bh-start">
+        </div>
+        <div class="form-row">
+          <label>End Time</label>
+          <input type="time" id="bh-end">
+        </div>
+      </div>
+      <button class="btn-primary-full" id="btn-save-hours" onclick="submitBusinessHours()">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Change Password Modal (all agents) ────────────────────────── -->
 <div class="modal-overlay" id="modal-password" onclick="if(event.target===this) closePasswordModal()">
@@ -577,6 +619,77 @@ if (STATE.agent.role === 'admin') {
     loadConversations();
   });
   document.getElementById('btn-team').style.display = '';
+  document.getElementById('btn-hours').style.display = '';
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Business hours (admin only)
+// ─────────────────────────────────────────────────────────────────
+const ALL_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+let _hoursSelectedDays = [];
+
+function openHoursModal() {
+  document.getElementById('modal-hours').classList.add('visible');
+  loadHours();
+}
+
+function closeHoursModal() {
+  document.getElementById('modal-hours').classList.remove('visible');
+}
+
+async function loadHours() {
+  try {
+    const { businessHours } = await api('/settings/business-hours');
+    document.getElementById('bh-tz').value = businessHours.tz;
+    document.getElementById('bh-start').value = businessHours.start;
+    document.getElementById('bh-end').value = businessHours.end;
+    _hoursSelectedDays = [...businessHours.days];
+    renderDayChips();
+  } catch (e) {
+    toast('Failed to load business hours: ' + e.message, 'error');
+  }
+}
+
+function renderDayChips() {
+  const el = document.getElementById('bh-days');
+  el.innerHTML = ALL_DAYS.map(d => `
+    <button type="button" class="day-chip ${_hoursSelectedDays.includes(d) ? 'active' : ''}" onclick="toggleHoursDay('${d}')">${d}</button>
+  `).join('');
+}
+
+function toggleHoursDay(day) {
+  _hoursSelectedDays = _hoursSelectedDays.includes(day)
+    ? _hoursSelectedDays.filter(d => d !== day)
+    : [..._hoursSelectedDays, day];
+  renderDayChips();
+}
+
+async function submitBusinessHours() {
+  const tz    = document.getElementById('bh-tz').value.trim();
+  const start = document.getElementById('bh-start').value;
+  const end   = document.getElementById('bh-end').value;
+
+  if (!tz) { toast('Timezone is required', 'error'); return; }
+  if (!_hoursSelectedDays.length) { toast('Select at least one active day', 'error'); return; }
+  if (!start || !end) { toast('Start and end time are required', 'error'); return; }
+
+  const btn = document.getElementById('btn-save-hours');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    await api('/settings/business-hours', {
+      method: 'PUT',
+      body: { tz, days: _hoursSelectedDays, start, end },
+    });
+    toast('Business hours saved ✓', 'success');
+    closeHoursModal();
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────

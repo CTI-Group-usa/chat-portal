@@ -6,6 +6,7 @@ import { agents }        from './routes/agents.js';
 import { conversations } from './routes/conversations.js';
 import { messages }      from './routes/messages.js';
 import { templates }     from './routes/templates.js';
+import { settings }      from './routes/settings.js';
 
 export { InboxRoom };   // Durable Object export — required by wrangler
 
@@ -28,6 +29,7 @@ app.route('/api/agents',   agents);
 app.route('/api/conversations', conversations);
 app.route('/api/messages',     messages);
 app.route('/api/templates',    templates);
+app.route('/api/settings',     settings);
 
 // ── WebSocket upgrade — proxied to Durable Object ─────────────────
 // GET /ws?token=JWT_TOKEN
