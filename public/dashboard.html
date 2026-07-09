@@ -11,7 +11,6 @@
   --wa-green:   #c1272d;
   --wa-dark:    #8a1c21;
   --sidebar-w:  300px;
-  --header-h:   56px;
   --gray-50:    #f9fafb;
   --gray-100:   #f3f4f6;
   --gray-200:   #e5e7eb;
@@ -25,37 +24,33 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--gray-100);
-  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  height: 100vh; display: flex; flex-direction: row; overflow: hidden;
 }
 
-/* ── Top Header ───────────────────────────────────────────────── */
-header {
-  height: var(--header-h); background: var(--wa-dark);
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 20px; flex-shrink: 0; z-index: 10;
-  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+/* ── Icon Rail (global left nav, respond.io-style) ──────────────── */
+.icon-rail {
+  width: 64px; background: var(--wa-dark); flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 14px 0; gap: 10px; z-index: 10; box-shadow: 1px 0 4px rgba(0,0,0,.2);
 }
-.header-left { display: flex; align-items: center; gap: 10px; }
-.header-logo { color: #fff; font-size: 17px; font-weight: 700; letter-spacing: -.3px; }
-.header-logo span { color: #fff; opacity: .85; font-weight: 500; }
-.header-logo-img { height: 30px; border-radius: 5px; background: #fff; padding: 2px 5px; display: block; }
+.rail-logo { height: 30px; border-radius: 5px; background: #fff; padding: 2px 5px; display: block; margin-bottom: 6px; }
+.rail-nav { display: flex; flex-direction: column; gap: 8px; }
+.rail-bottom { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .ws-badge {
-  font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 600;
-  background: #dc2626; color: #fff; transition: background .3s;
+  width: 10px; height: 10px; border-radius: 50%; background: #dc2626; transition: background .3s;
 }
-.ws-badge.connected { background: var(--wa-green); }
-.header-right { display: flex; align-items: center; gap: 16px; }
-.agent-pill {
-  background: rgba(255,255,255,.15); color: #fff; font-size: 13px;
-  padding: 5px 12px; border-radius: 99px; display: flex; align-items: center; gap: 6px;
+.ws-badge.connected { background: #4ade80; }
+.rail-avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,.2); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;
 }
-.agent-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wa-green); }
 .btn-icon {
-  background: rgba(255,255,255,.12); border: none; color: #fff;
-  padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px;
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.08); border: none; color: #fff;
+  border-radius: 10px; cursor: pointer; font-size: 19px; line-height: 1;
   transition: background .2s;
 }
-.btn-icon:hover { background: rgba(255,255,255,.25); }
+.btn-icon:hover { background: rgba(255,255,255,.22); }
 
 /* ── Team Modal ───────────────────────────────────────────────── */
 .modal-overlay {
@@ -371,24 +366,20 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
 <body>
 
 <!-- ── Header ─────────────────────────────────────────────────── -->
-<header>
-  <div class="header-left">
-    <img class="header-logo-img" src="assets/cti-logo.png" alt="CTI Group">
-    <div class="header-logo">Chat <span>Portal</span></div>
-    <span class="ws-badge" id="ws-badge">● Connecting</span>
+<nav class="icon-rail">
+  <img class="rail-logo" src="assets/cti-logo.png" alt="CTI Group" title="CTI Chat Portal">
+  <div class="rail-nav">
+    <button class="btn-icon" id="btn-team" onclick="openTeamModal()" title="Team" style="display:none">👥</button>
+    <button class="btn-icon" id="btn-hours" onclick="openHoursModal()" title="Business Hours" style="display:none">⏰</button>
+    <button class="btn-icon" id="btn-broadcast" onclick="openBroadcastModal()" title="Broadcast" style="display:none">📢</button>
+    <button class="btn-icon" onclick="openPasswordModal()" title="Change Password">🔑</button>
   </div>
-  <div class="header-right">
-    <div class="agent-pill">
-      <div class="dot"></div>
-      <span id="agent-name-display">Agent</span>
-    </div>
-    <button class="btn-icon" id="btn-team" onclick="openTeamModal()" style="display:none">👥 Team</button>
-    <button class="btn-icon" id="btn-hours" onclick="openHoursModal()" style="display:none">⏰ Hours</button>
-    <button class="btn-icon" id="btn-broadcast" onclick="openBroadcastModal()" style="display:none">📢 Broadcast</button>
-    <button class="btn-icon" onclick="openPasswordModal()">🔑 Password</button>
-    <button class="btn-icon" onclick="logout()">Sign Out</button>
+  <div class="rail-bottom">
+    <span class="ws-badge" id="ws-badge" title="Connecting…"></span>
+    <div class="rail-avatar" id="rail-avatar" title="Agent">A</div>
+    <button class="btn-icon" onclick="logout()" title="Sign Out">🚪</button>
   </div>
-</header>
+</nav>
 
 <!-- ── Business Hours Modal (admin only) ─────────────────────────── -->
 <div class="modal-overlay" id="modal-hours" onclick="if(event.target===this) closeHoursModal()">
@@ -732,7 +723,9 @@ const STATE = {
 // Guard — redirect to login if no token
 if (!STATE.token || !STATE.agent) window.location.href = '/';
 
-document.getElementById('agent-name-display').textContent = STATE.agent.name;
+const railAvatar = document.getElementById('rail-avatar');
+railAvatar.textContent = STATE.agent.name.charAt(0).toUpperCase();
+railAvatar.title = `${STATE.agent.name} (${STATE.agent.role})`;
 
 if (STATE.agent.role === 'admin') {
   const deptFilterEl = document.getElementById('dept-filter');
@@ -1276,14 +1269,14 @@ function connectWS() {
 
   ws.onopen = () => {
     const badge = document.getElementById('ws-badge');
-    badge.textContent = '● Live';
-    badge.className   = 'ws-badge connected';
+    badge.title     = 'Live';
+    badge.className = 'ws-badge connected';
   };
 
   ws.onclose = () => {
     const badge = document.getElementById('ws-badge');
-    badge.textContent = '● Reconnecting';
-    badge.className   = 'ws-badge';
+    badge.title     = 'Reconnecting…';
+    badge.className = 'ws-badge';
     setTimeout(connectWS, 3000);
   };
 
