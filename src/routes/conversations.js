@@ -1,11 +1,88 @@
 import { Hono }          from 'hono';
 import { requireAuth }   from '../lib/auth.js';
-import { json, err, now } from '../lib/utils.js';
+import { json, err, now, uuid, compileTemplate } from '../lib/utils.js';
+import { MetaClient, buildTemplateComponents } from '../lib/meta.js';
 import { broadcastToRoom } from './webhook.js';
 
 const conversations = new Hono();
 
 conversations.use('*', (c, next) => requireAuth(c.env.JWT_SECRET)(c, next));
+
+// ─────────────────────────────────────────────────────────────────
+//  POST /api/conversations
+//  Starts a brand-new conversation with a candidate who has never
+//  messaged in — WhatsApp only allows business-initiated contact via
+//  an approved template, so template_name is required (no free text).
+//  Body: { candidate_phone, candidate_name?, department?, template_name, vars }
+// ─────────────────────────────────────────────────────────────────
+conversations.post('/', async (c) => {
+    const agent = c.get('agent');
+    const { candidate_phone, candidate_name, department, template_name, vars = {} } = await c.req.json();
+
+    if (!candidate_phone) return err('candidate_phone is required');
+    if (!template_name)   return err('template_name is required — a new WhatsApp conversation can only start with an approved template');
+
+    const phone = candidate_phone.replace(/[^\d]/g, '');
+    if (!phone) return err('candidate_phone must contain digits (E.164 without the leading +)');
+
+    // Non-admins can only start conversations in their own department queue —
+    // otherwise they'd create a conversation they can't see themselves.
+    const dept = agent.role === 'admin' ? (department ?? agent.department ?? 'general') : agent.department;
+
+    const existing = await c.env.DB.prepare(
+        'SELECT id FROM conversations WHERE candidate_phone = ?'
+    ).bind(phone).first();
+    if (existing) {
+        return err('conversation_exists', 409, `A conversation with this number already exists (id ${existing.id}) — open it instead of starting a new one.`);
+    }
+
+    const tpl = await c.env.DB.prepare(
+        'SELECT * FROM message_templates WHERE name = ? AND is_active = 1'
+    ).bind(template_name).first();
+    if (!tpl) return err('Template not found or inactive', 404);
+
+    const meta = new MetaClient(c.env);
+    const components = buildTemplateComponents(tpl, vars);
+
+    let metaMessageId;
+    try {
+        const res = await meta.sendTemplate(phone, tpl.name, tpl.language_code, components);
+        metaMessageId = res.messages?.[0]?.id;
+    } catch (e) {
+        console.error('[Meta API] New-conversation template send failed:', JSON.stringify(e));
+        return err('meta_api_error', 502, e?.detail ?? e?.message ?? 'Unknown Meta API error');
+    }
+
+    const ts    = now();
+    const convId = uuid();
+    const usedBodyText = compileTemplate(tpl.body_text, vars);
+
+    await c.env.DB.prepare(
+        `INSERT INTO conversations (id, candidate_phone, candidate_name, assigned_agent_id, department, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(convId, phone, candidate_name ?? null, agent.id, dept, ts, ts).run();
+
+    const msgId = uuid();
+    await c.env.DB.prepare(
+        `INSERT INTO messages (id, conversation_id, sender_type, agent_id, body_text, meta_message_id, status, template_name, created_at)
+         VALUES (?, ?, 'agent', ?, ?, ?, 'sent', ?, ?)`
+    ).bind(msgId, convId, agent.id, usedBodyText, metaMessageId, tpl.name, ts).run();
+
+    const conv = {
+        id: convId, candidate_phone: phone, candidate_name: candidate_name ?? null,
+        assigned_agent_id: agent.id, agent_name: agent.name, department: dept,
+        status: 'open', last_candidate_message_at: null, created_at: ts, updated_at: ts,
+    };
+    const savedMsg = {
+        id: msgId, conversation_id: convId, sender_type: 'agent', agent_id: agent.id,
+        agent_name: agent.name, body_text: usedBodyText, meta_message_id: metaMessageId,
+        status: 'sent', template_name: tpl.name, created_at: ts,
+    };
+
+    await broadcastToRoom(c.env, { type: 'new_message', conversation: conv, message: savedMsg });
+
+    return json({ conversation: conv, message: savedMsg }, 201);
+});
 
 // ─────────────────────────────────────────────────────────────────
 //  GET /api/conversations

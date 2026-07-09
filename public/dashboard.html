@@ -120,7 +120,13 @@ header {
 .sidebar-header {
   padding: 12px 14px; border-bottom: 1px solid var(--gray-200); flex-shrink: 0;
 }
-.sidebar-header h2 { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 10px; }
+.sidebar-header h2 { font-size: 14px; font-weight: 700; color: var(--gray-800); }
+.sidebar-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.btn-new-conv {
+  background: var(--wa-green); color: #fff; border: none; border-radius: 6px;
+  padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.btn-new-conv:hover { background: var(--wa-dark); }
 .queue-tabs { display: flex; gap: 4px; }
 .queue-tab {
   flex: 1; padding: 6px 4px; border: 1.5px solid var(--gray-200);
@@ -426,6 +432,48 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
   </div>
 </div>
 
+<!-- ── New Conversation Modal (all agents) ───────────────────────── -->
+<div class="modal-overlay" id="modal-new-conv" onclick="if(event.target===this) closeNewConvModal()">
+  <div class="modal-box" style="width:440px;">
+    <div class="modal-header">
+      <h3>New Conversation</h3>
+      <button class="modal-close" onclick="closeNewConvModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px; color:var(--gray-600); margin-bottom:14px;">
+        WhatsApp only allows a business to message someone who hasn't texted in first if
+        it's an approved template — pick one below.
+      </p>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Candidate Phone</label>
+          <input type="text" id="nc-phone" placeholder="e.g. 628123456789">
+        </div>
+        <div class="form-row">
+          <label>Candidate Name</label>
+          <input type="text" id="nc-name" placeholder="Optional">
+        </div>
+      </div>
+      <div class="form-row" id="nc-dept-row" style="display:none;">
+        <label>Department</label>
+        <select id="nc-department">
+          <option value="business">Business</option>
+          <option value="recruitment">Recruitment</option>
+          <option value="j1">J1 Program</option>
+          <option value="general">General</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Template</label>
+        <div class="template-grid" id="nc-template-grid"></div>
+      </div>
+      <div class="tpl-preview" id="nc-tpl-preview"></div>
+      <div class="tpl-vars" id="nc-tpl-vars"></div>
+      <button class="btn-primary-full" id="btn-send-new-conv" onclick="submitNewConv()" disabled>Select a template first</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Change Password Modal (all agents) ────────────────────────── -->
 <div class="modal-overlay" id="modal-password" onclick="if(event.target===this) closePasswordModal()">
   <div class="modal-box" style="width:380px;">
@@ -507,7 +555,10 @@ textarea#msg-input:focus { border-color: var(--wa-green); }
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-header">
-      <h2>Conversations</h2>
+      <div class="sidebar-header-row">
+        <h2>Conversations</h2>
+        <button class="btn-new-conv" onclick="openNewConvModal()">＋ New</button>
+      </div>
       <div class="queue-tabs">
         <button class="queue-tab active" data-q="all">
           <span class="tab-count" id="cnt-all">0</span>All
@@ -721,6 +772,99 @@ async function submitBusinessHours() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Save';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  New Conversation — business-initiated, template-only
+// ─────────────────────────────────────────────────────────────────
+let _newConvTpl = null;
+
+function openNewConvModal() {
+  document.getElementById('nc-phone').value = '';
+  document.getElementById('nc-name').value = '';
+  document.getElementById('nc-dept-row').style.display = STATE.agent.role === 'admin' ? '' : 'none';
+  if (STATE.agent.role === 'admin') document.getElementById('nc-department').value = STATE.agent.department;
+
+  _newConvTpl = null;
+  document.getElementById('nc-tpl-preview').classList.remove('visible');
+  document.getElementById('nc-tpl-vars').innerHTML = '';
+  const btn = document.getElementById('btn-send-new-conv');
+  btn.disabled = true;
+  btn.textContent = 'Select a template first';
+
+  const grid = document.getElementById('nc-template-grid');
+  grid.innerHTML = STATE.templates.map(t =>
+    `<button type="button" class="tpl-chip" data-id="${t.id}" onclick="selectNewConvTemplate('${t.id}')">${t.name.replace(/_/g,' ')}</button>`
+  ).join('');
+
+  document.getElementById('modal-new-conv').classList.add('visible');
+}
+
+function closeNewConvModal() {
+  document.getElementById('modal-new-conv').classList.remove('visible');
+}
+
+function selectNewConvTemplate(id) {
+  _newConvTpl = STATE.templates.find(t => t.id === id);
+  if (!_newConvTpl) return;
+
+  document.querySelectorAll('#nc-template-grid .tpl-chip').forEach(el =>
+    el.classList.toggle('active', el.dataset.id === id)
+  );
+
+  const preview = document.getElementById('nc-tpl-preview');
+  preview.textContent = _newConvTpl.body_text;
+  preview.classList.add('visible');
+
+  const varsEl = document.getElementById('nc-tpl-vars');
+  varsEl.innerHTML = (_newConvTpl.variables ?? []).map(v => `
+    <div class="tpl-var-row">
+      <span class="tpl-var-label">${escHtml(v.label)}</span>
+      <input class="tpl-var-input" data-key="${v.key}" placeholder="Enter ${escHtml(v.label)}…">
+    </div>`
+  ).join('');
+
+  const btn = document.getElementById('btn-send-new-conv');
+  btn.disabled = false;
+  btn.textContent = 'Send';
+}
+
+async function submitNewConv() {
+  const phone = document.getElementById('nc-phone').value.trim();
+  const name  = document.getElementById('nc-name').value.trim();
+
+  if (!phone) { toast('Candidate phone is required', 'error'); return; }
+  if (!_newConvTpl) { toast('Select a template', 'error'); return; }
+
+  const vars = {};
+  document.querySelectorAll('#nc-tpl-vars .tpl-var-input').forEach(el => { vars[el.dataset.key] = el.value.trim(); });
+  const missing = (_newConvTpl.variables ?? []).filter(v => !vars[v.key]);
+  if (missing.length) { toast('Please fill in all template variables', 'error'); return; }
+
+  const body = {
+    candidate_phone: phone,
+    candidate_name: name || undefined,
+    template_name: _newConvTpl.name,
+    vars,
+  };
+  if (STATE.agent.role === 'admin') body.department = document.getElementById('nc-department').value;
+
+  const btn = document.getElementById('btn-send-new-conv');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const { conversation } = await api('/conversations', { method: 'POST', body });
+    toast('Conversation started ✓', 'success');
+    closeNewConvModal();
+    await loadConversations();
+    openConv(conversation.id);
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send';
   }
 }
 
